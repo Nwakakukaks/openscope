@@ -157,10 +157,10 @@ const NODE_GUIDES: Record<string, { title: string; description: string; usage: s
   },
 };
 
-const nodeConfigs: Record<string, { label: string; type: string; min?: number; max?: number; options?: string[]; description?: string }[]> = {
+const nodeConfigs: Record<string, { label: string; type: string; min?: number; max?: number; options?: string[]; description?: string; readonly?: boolean; accept?: string }[]> = {
   pipeline: [
     { label: "pipelineId", type: "text", description: "Pipeline identifier" },
-    { label: "remoteInference", type: "toggle", description: "Run on remote server" },
+    // { label: "remoteInference", type: "toggle", description: "Run on remote server" },
   ],
   noteGuide: [
     { label: "Title", type: "text", description: "Note title (e.g. Step 1)" },
@@ -188,6 +188,7 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
   ],
   videoInput: [
     { label: "Frames", type: "number", min: 1, max: 100, description: "Number of frames to buffer" },
+    { label: "VideoFile", type: "file", accept: "video/*", description: "Upload video file" },
   ],
   textPrompt: [
     { label: "Text", type: "textarea", description: "Prompt text" },
@@ -271,6 +272,7 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
     { label: "usage", type: "select", options: ["main", "preprocessor", "postprocessor", "all"], description: "Pipeline type" },
     { label: "mode", type: "select", options: ["text", "video"], description: "Input mode" },
     { label: "supportsPrompts", type: "toggle", description: "Enable text prompts" },
+    { label: "remoteInference", type: "toggle", description: "Run on remote GPU server", readonly: true },
   ],
 };
 
@@ -455,17 +457,39 @@ export default function PropertiesPanel() {
                   {field.type === "toggle" && (
                     <button
                       type="button"
+                      disabled={field.readonly}
                       onClick={() =>
-                        updateNodeConfig(node.id, { [field.label.toLowerCase()]: !value })
+                        !field.readonly && updateNodeConfig(node.id, { [field.label.toLowerCase()]: !value })
                       }
-                      className={`w-8 h-4 rounded-full transition-colors ${value ? "bg-primary" : "bg-background border border-border"
-                        }`}
+                      className={`w-8 h-4 rounded-full transition-colors ${value ? "bg-primary" : "bg-background border border-border"} ${field.readonly ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
                       <div
                         className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${value ? "translate-x-4" : "translate-x-0.5"
                           }`}
                       />
                     </button>
+                  )}
+
+                  {field.type === "file" && (
+                    <div className="space-y-2">
+                      <input
+                        type="file"
+                        accept={field.accept || "*/*"}
+                        className="w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            // Store file reference for now - the actual stream will be created when running
+                            updateNodeConfig(node.id, { [field.label.toLowerCase()]: file.name });
+                            // Dispatch event so parent can handle the file
+                            window.dispatchEvent(new CustomEvent('openscope:video-upload', { detail: { file, nodeId: node.id } }));
+                          }
+                        }}
+                      />
+                      {value && (
+                        <p className="text-xs text-green-500">✓ {String(value)} selected</p>
+                      )}
+                    </div>
                   )}
                 </div>
               );

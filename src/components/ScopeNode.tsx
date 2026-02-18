@@ -416,7 +416,7 @@ const nodeIcons: Record<string, React.ReactNode> = {
 };
 
 const NODE_GUIDES: Record<string, string> = {
-  pipeline: "AI pipeline from Scope server - runs locally or remotely",
+  pipeline: "Main pipeline - runs locally or remotely",
   pluginConfig: "Set pipeline ID, name, usage type (main/pre/post), and input mode",
   noteGuide: "Add notes or instructions for your plugin flow",
   videoInput: "Accept video frames from camera or file as input",
@@ -474,6 +474,9 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const isEntryPoint = nodeData.type === "pluginConfig";
   const isCodeMode = nodeData.config?.isCodeMode as boolean ?? false;
   const currentCode = nodeData.config?.pythonCode as string | undefined;
+  
+  const showLeftHandle = !isEntryPoint;
+  const showRightHandle = !isOutput;
 
   // Auto-initialize code when first entering code mode
   useEffect(() => {
@@ -504,6 +507,33 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       fileName: file.name,
       ...(isVideo ? {} : { width: 0, height: 0 }),
     });
+    
+    // If video, create stream from file
+    if (isVideo) {
+      const video = document.createElement('video');
+      video.src = url;
+      video.muted = true;
+      video.playsInline = true;
+      video.onloadedmetadata = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        const stream = canvas.captureStream(15);
+        video.play();
+        const drawFrame = () => {
+          if (video.paused || video.ended) return;
+          ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+          requestAnimationFrame(drawFrame);
+        };
+        video.onplay = drawFrame;
+        // Dispatch event with stream
+        window.dispatchEvent(new CustomEvent('openscope:video-stream-ready', { 
+          detail: { stream, nodeId: id } 
+        }));
+      };
+    }
+    
     if (!isVideo) {
       const img = new window.Image();
       img.onload = () => {
@@ -560,7 +590,10 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const fileName = nodeData.config?.fileName as string | undefined;
   const showImagePreview = nodeData.type === "imageInput";
   const showVideoPreview = nodeData.type === "videoInput";
-  const guideText = NODE_GUIDES[nodeData.type];
+  const showCodeButton = !isOutput;
+  const guideText = nodeData.type.startsWith("pipeline_") 
+    ? `Main pipeline - runs locally or remotely`
+    : NODE_GUIDES[nodeData.type];
 
   return (
     <div
@@ -577,7 +610,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         </div>
       )}
 
-      {!isInput && !isEntryPoint && (
+      {showLeftHandle && (
         <Handle
           type="target"
           position={Position.Left}
@@ -594,6 +627,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
           )} */}
         </div>
         <div className="flex items-center gap-1 ml-3">
+        {showCodeButton && (
         <button
           onClick={toggleCodeMode}
           className="p-1 hover:bg-accent hover:text-primary rounded transition-colors text-muted-foreground"
@@ -601,6 +635,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         >
           {isCodeMode ? <Eye className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
         </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -711,7 +746,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         </div>
       )}
 
-      {(isEntryPoint || !isOutput) && (
+      {showRightHandle && (
         <Handle
           type="source"
           position={Position.Right}

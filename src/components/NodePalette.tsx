@@ -36,7 +36,7 @@ interface NodeCategory {
   name: string;
   icon: React.ReactNode;
   color: string;
-  nodes: { type: string; label: string; icon: React.ReactNode; description: string; pipelineId?: string }[];
+  nodes: { type: string; label: string; icon: React.ReactNode; description: string; pipelineId?: string; enabled?: boolean }[];
   isLoading?: boolean;
 }
 
@@ -129,30 +129,19 @@ export default function NodePalette() {
   }));
 
   const getInputNodes = () => {
-    const inputNodes = [];
-    if (mode === "video") {
-      inputNodes.push({ type: "videoInput", label: "Video Input", icon: <Video className="w-4 h-4" />, description: "Accept video frames" });
-    }
-    if (mode === "text" || supportsPrompts === true) {
-      inputNodes.push({ type: "textPrompt", label: "Text Prompt", icon: <Type className="w-4 h-4" />, description: "Text with weights" });
-    }
-    // Image Input always available as reference
-    inputNodes.push({ type: "imageInput", label: "Image Input", icon: <Image className="w-4 h-4" />, description: "Reference images" });
-    return inputNodes;
+    return [
+      { type: "videoInput", label: "Video Input", icon: <Video className="w-4 h-4" />, description: "Accept video frames", enabled: mode === "video" },
+      { type: "textPrompt", label: "Text Prompt", icon: <Type className="w-4 h-4" />, description: "Text with weights", enabled: mode === "text" || supportsPrompts === true },
+      { type: "imageInput", label: "Image Input", icon: <Image className="w-4 h-4" />, description: "Reference images", enabled: true },
+    ];
   };
 
   const getOutputNodes = () => {
-    const outputNodes = [];
-    if (usage === "main" || usage === "all") {
-      outputNodes.push({ type: "pipelineOutput", label: "Main Pipeline", icon: <Zap className="w-4 h-4" />, description: "Main output" });
-    }
-    if (usage === "preprocessor" || usage === "all") {
-      outputNodes.push({ type: "preprocessorOutput", label: "Preprocessor", icon: <Layers className="w-4 h-4" />, description: "Pre-process" });
-    }
-    if (usage === "postprocessor" || usage === "all") {
-      outputNodes.push({ type: "postprocessorOutput", label: "Postprocessor", icon: <Play className="w-4 h-4" />, description: "Post-process" });
-    }
-    return outputNodes;
+    return [
+      { type: "pipelineOutput", label: "Main Pipeline", icon: <Zap className="w-4 h-4" />, description: "Main output", enabled: usage === "main" || usage === "all" },
+      { type: "preprocessorOutput", label: "Preprocessor", icon: <Layers className="w-4 h-4" />, description: "Pre-process", enabled: usage === "preprocessor" || usage === "all" },
+      { type: "postprocessorOutput", label: "Postprocessor", icon: <Play className="w-4 h-4" />, description: "Post-process", enabled: usage === "postprocessor" || usage === "all" },
+    ];
   };
 
   const nodeCategories: NodeCategory[] = [
@@ -178,7 +167,7 @@ export default function NodePalette() {
       isLoading: pipelinesLoading,
     },
     {
-      name: "Preprocessor",
+      name: "Pre-processor",
       icon: <Layers className="w-4 h-4" />,
       color: "text-slate-400",
       nodes: [
@@ -189,7 +178,7 @@ export default function NodePalette() {
       ],
     },
     {
-      name: "Postprocessor",
+      name: "Post-processor",
       icon: <Play className="w-4 h-4" />,
       color: "text-slate-400",
       nodes: [
@@ -267,19 +256,21 @@ export default function NodePalette() {
                     Loading...
                   </div>
                 ) : category.nodes.length > 0 ? (
-                  category.nodes.map((node) => (
+                  category.nodes.map((node) => {
+                    const nodeEnabled = enabled && (node.enabled !== false);
+                    return (
                     <div
                       key={node.type}
-                      draggable={enabled}
-                      onDragStart={(e) => enabled && handleDragStart(e, node.type, node.pipelineId)}
-                      title={!enabled ? "Set usage to include this category in Plugin Config to enable" : undefined}
+                      draggable={nodeEnabled}
+                      onDragStart={(e) => nodeEnabled && handleDragStart(e, node.type, node.pipelineId)}
+                      title={!nodeEnabled ? (node.enabled === false ? "Not available for current mode/usage — change Plugin Config to enable" : "Set usage to include this category in Plugin Config to enable") : undefined}
                       className={`group flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all ${
-                        enabled 
+                        nodeEnabled
                           ? "text-muted-foreground hover:text-foreground hover:bg-accent/50 cursor-grab active:cursor-grabbing hover:border-border"
-                          : "text-muted-foreground/40 cursor-not-allowed border-transparent opacity-60"
+                          : "text-muted-foreground/65 cursor-not-allowed border-transparent opacity-80"
                       }`}
                     >
-                      <div className={`w-8 h-8 rounded flex items-center justify-center bg-background border border-border ${enabled ? category.color : "text-muted-foreground/40"} ${enabled ? "group-hover:border-primary/30" : ""}`}>
+                      <div className={`w-8 h-8 rounded flex items-center justify-center bg-background border border-border ${nodeEnabled ? category.color : "text-muted-foreground/65"} ${nodeEnabled ? "group-hover:border-primary/30" : ""}`}>
                         {node.icon}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -287,7 +278,8 @@ export default function NodePalette() {
                         <div className="text-xs truncate">{node.description}</div>
                       </div>
                     </div>
-                  ))
+                  );
+                  })
                 ) : (
                   <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
                     <AlertCircle className="w-4 h-4" />

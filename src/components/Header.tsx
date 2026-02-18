@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   Play,
+  Pause,
   Save,
   FolderOpen,
   Download,
@@ -12,9 +13,9 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   MessageCircleQuestion,
-  User,
-  LogOut,
   CircleUser,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import { generatePlugin } from "@/lib/codeGenerator";
@@ -29,6 +30,10 @@ interface HeaderProps {
   onPreview: () => void;
   user: { email?: string; avatar_url?: string } | null;
   onAuthClick: () => void;
+  isScopeConnected?: boolean;
+  isStreaming?: boolean;
+  onStartStream?: () => void;
+  onStopStream?: () => void;
 }
 
 export default function Header({ 
@@ -41,6 +46,10 @@ export default function Header({
   onPreview,
   user,
   onAuthClick,
+  isScopeConnected,
+  isStreaming,
+  onStartStream,
+  onStopStream,
 }: HeaderProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const nodes = useGraphStore((state) => state.nodes);
@@ -85,14 +94,37 @@ export default function Header({
           <ActionButton icon={Save} label="Save" onClick={onOpenSave} />
         </nav>
       </div>
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onPreview}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-all text-sm font-medium"
-        >
-          <Play className="w-4 h-4" />
-          Preview
-        </button>
+      <div className="flex items-center gap-3">
+        {/* Scope Connection Status */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/50">
+          {isScopeConnected ? (
+            <Wifi className="w-4 h-4 text-green-500" />
+          ) : (
+            <WifiOff className="w-4 h-4 text-red-500" />
+          )}
+          {/* <span className="text-xs text-muted-foreground">
+            {isScopeConnected ? "Scope Connected" : "Scope Offline"}
+          </span> */}
+        </div>
+        
+        {/* Streaming Controls */}
+        {isStreaming ? (
+          <button
+            onClick={onStopStream}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors text-sm font-medium"
+          >
+            <Pause className="w-4 h-4" />
+            Stop
+          </button>
+        ) : (
+          <button
+            onClick={onStartStream}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg  bg-accent text-accent-foreground hover:bg-muted transition-colors text-sm font-medium"
+          >
+            <Play className="w-4 h-4" />
+            Run
+          </button>
+        )}
         <button
           onClick={onOpenAI}
           className="flex items-center gap-2 px-3 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-muted transition-colors text-sm font-medium"

@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # Scope API
     scope_api_url: str = "http://localhost:8000"
 
+    # Cloud (for remote inference)
+    scope_cloud_app_id: Optional[str] = None
+    scope_cloud_api_key: Optional[str] = None
+    scope_cloud_user_id: Optional[str] = None
+
     # App
     app_name: str = "OpenScope"
     debug: bool = False

@@ -5,7 +5,7 @@ Visual node-based plugin builder for Daydream Scope. Build Scope plugins visuall
 ## Features
 
 - **Visual Node Editor** - Drag and drop nodes to build plugins
-- **Code Editor
+- **Code Editor** - Easily toggle between visual builder and code editor 
 - **Real-time Preview** - See your changes instantly
 - **Code Generation** - Export as ready-to-install Python plugin
 - **AI Assistance** - Get help from Groq-powered AI assistant

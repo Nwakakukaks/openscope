@@ -111,16 +111,16 @@ export default function OpenModal({ isOpen, onClose }: OpenModalProps) {
 }
 
 function parsePluginFile(content: string): Array<{ type: string; position: { x: number; y: number }; config?: Record<string, unknown> }> {
+  const NODE_WIDTH = 280;
+  const HORIZONTAL_GAP = 100;
   const nodes: Array<{ type: string; position: { x: number; y: number }; config?: Record<string, unknown> }> = [];
   
-  // Try to extract config class
   const configMatch = content.match(/class\s+(\w+Config)\s*\(\s*BasePipelineConfig/);
   const classMatch = content.match(/class\s+(\w+)\s*\(\s*BasePipeline/);
   
   const pipelineId = configMatch ? configMatch[1].replace('Config', '').toLowerCase() : 'plugin';
   const pipelineName = classMatch ? classMatch[1] : 'My Plugin';
   
-  // Extract usage and mode from config
   let usage = 'main';
   let mode = 'video';
   let supportsPrompts = false;
@@ -134,7 +134,6 @@ function parsePluginFile(content: string): Array<{ type: string; position: { x: 
   const promptsMatch = content.match(/supports_prompts:\s*bool\s*=\s*(True|False)/);
   if (promptsMatch) supportsPrompts = promptsMatch[1] === 'True';
 
-  // Add plugin config node
   nodes.push({
     type: 'pluginConfig',
     position: { x: 50, y: 50 },
@@ -145,48 +144,39 @@ function parsePluginFile(content: string): Array<{ type: string; position: { x: 
       usage,
       mode,
       supportsPrompts,
+      remoteInference: false,
     },
   });
 
-  // Try to detect pipeline type
-  let hasInput = false;
-  let hasOutput = false;
+  let inputType = 'imageInput';
+  let outputType = 'pipelineOutput';
   
-  if (content.includes('def process')) {
-    // Add appropriate input based on mode
-    if (mode === 'video' || !content.includes('TextPrompt')) {
-      nodes.push({
-        type: 'videoInput',
-        position: { x: 100, y: 200 },
-      });
-      hasInput = true;
-    }
-    
-    if (usage === 'preprocessor') {
-      nodes.push({
-        type: 'preprocessorOutput',
-        position: { x: 400, y: 200 },
-      });
-      hasOutput = true;
-    } else if (usage === 'postprocessor') {
-      nodes.push({
-        type: 'postprocessorOutput',
-        position: { x: 400, y: 200 },
-      });
-      hasOutput = true;
-    } else {
-      nodes.push({
-        type: 'pipelineOutput',
-        position: { x: 400, y: 200 },
-      });
-      hasOutput = true;
-    }
+  if (mode === 'video' || !content.includes('TextPrompt')) {
+    inputType = 'videoInput';
+  }
+  
+  if (usage === 'preprocessor') {
+    outputType = 'preprocessorOutput';
+  } else if (usage === 'postprocessor') {
+    outputType = 'postprocessorOutput';
   }
 
-  // Add default edges
-  if (hasInput && hasOutput) {
-    nodes.push({ type: '', position: { x: 0, y: 0 } } as any);
-  }
+  nodes.push({
+    type: inputType,
+    position: { x: 50 + NODE_WIDTH + HORIZONTAL_GAP, y: 50 },
+  });
+
+  // Use a default valid pipeline ID (longlive for main, passthrough for pre/post)
+  const defaultPipelineId = (usage === 'main') ? 'longlive' : 'passthrough';
+  nodes.push({
+    type: `pipeline_${defaultPipelineId}`,
+    position: { x: 50 + 2 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 },
+  });
+
+  nodes.push({
+    type: outputType,
+    position: { x: 50 + 3 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 },
+  });
 
   return nodes;
 }
