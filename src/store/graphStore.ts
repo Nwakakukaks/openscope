@@ -1,0 +1,507 @@
+import { create } from "zustand";
+import { 
+  Node, 
+  Edge, 
+  Connection, 
+  addEdge, 
+  OnNodesChange, 
+  OnEdgesChange,
+  OnConnect,
+  applyNodeChanges,
+  applyEdgeChanges
+} from "@xyflow/react";
+import { v4 as uuidv4 } from "uuid";
+
+export type NodeData = {
+  label: string;
+  type: string;
+  config: Record<string, unknown>;
+};
+
+interface GraphState {
+  nodes: Node<NodeData>[];
+  edges: Edge[];
+  selectedNode: string | null;
+  
+  // Node operations
+  addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>) => void;
+  addNodesWithEdges: (nodes: Array<{ type: string; position: { x: number; y: number }; config?: Record<string, unknown> }>, edges?: Array<{ source: number; target: number }>) => void;
+  addOutputNode: () => void;
+  updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
+  deleteNode: (nodeId: string) => void;
+  selectNode: (nodeId: string | null) => void;
+  clearAll: () => void;
+  
+  // Edge operations
+  onNodesChange: OnNodesChange<Node<NodeData>>;
+  onEdgesChange: OnEdgesChange<Edge>;
+  onConnect: OnConnect;
+}
+
+export const nodeDefaults: Record<string, Partial<NodeData>> = {
+  pipeline: {
+    label: "Pipeline",
+    config: {
+      pipelineId: "",
+      pipelineName: "",
+      remoteInference: false,
+    },
+  },
+  videoInput: {
+    label: "Video Input",
+    config: {},
+  },
+  textPrompt: {
+    label: "Text Prompt",
+    config: { text: "", weight: 1.0 },
+  },
+  imageInput: {
+    label: "Image Input",
+    config: { path: "" },
+  },
+  parameters: {
+    label: "Parameters",
+    config: {},
+  },
+  brightness: {
+    label: "Brightness",
+    config: { value: 0 },
+  },
+  contrast: {
+    label: "Contrast",
+    config: { value: 1 },
+  },
+  blur: {
+    label: "Blur",
+    config: { radius: 5 },
+  },
+  mirror: {
+    label: "Mirror",
+    config: { mode: "horizontal" },
+  },
+  kaleido: {
+    label: "Kaleido",
+    config: { slices: 6, rotation: 0 },
+  },
+  blend: {
+    label: "Blend",
+    config: { mode: "add", opacity: 0.5 },
+  },
+  mask: {
+    label: "Mask",
+    config: { targetClass: "person" },
+  },
+  // Preprocessor-specific effects
+  segmentation: {
+    label: "Segmentation",
+    config: { model: "sam", targetClass: "all" },
+  },
+  depthEstimation: {
+    label: "Depth Estimation",
+    config: { model: "depth-anything" },
+  },
+  backgroundRemoval: {
+    label: "Background Removal",
+    config: { model: "u2net" },
+  },
+  // Postprocessor-specific effects
+  colorGrading: {
+    label: "Color Grading",
+    config: { temperature: 0, tint: 0, saturation: 0, contrast: 0 },
+  },
+  upscaling: {
+    label: "Upscaling",
+    config: { scale: 2, model: "realesrgan" },
+  },
+  denoising: {
+    label: "Denoising",
+    config: { strength: 0.5, method: "bm3d" },
+  },
+  styleTransfer: {
+    label: "Style Transfer",
+    config: { style: "anime", strength: 0.7 },
+  },
+  vignette: {
+    label: "Vignette",
+    config: { intensity: 0.5, smoothness: 0.5 },
+  },
+  pipelineOutput: {
+    label: "Pipeline Output",
+    config: { usage: "main" },
+  },
+  preprocessorOutput: {
+    label: "Preprocessor Output",
+    config: {},
+  },
+  postprocessorOutput: {
+    label: "Postprocessor Output",
+    config: {},
+  },
+  pluginConfig: {
+    label: "Plugin Configuration",
+    config: {
+      pipelineId: "",
+      pipelineName: "",
+      pipelineDescription: "",
+      usage: "main", // main, preprocessor, postprocessor, all
+      mode: "video", // text, video
+      supportsPrompts: true,
+    },
+  },
+  noteGuide: {
+    label: "Note",
+    config: {
+      title: "Step 1",
+      content: "1. Add instructions here.\n2. Edit in the properties panel.",
+    },
+  },
+  lessonGettingStarted: {
+    label: "Getting Started",
+    config: {
+      title: "1. Getting Started",
+      content: `Welcome to OpenScope! 🎯
+
+OpenScope is a visual plugin builder for Daydream Scope that lets you create AI video processing pipelines without coding.
+
+KEY CONCEPTS:
+• Plugin Config - Defines your plugin's identity (name, ID, usage type)
+• Inputs - Video, Text Prompts, or Image References
+• Pipelines - AI models fetched from Scope server
+• Preprocessors - Modify input before main pipeline
+• Postprocessors - Modify output after main pipeline
+• Effects - Visual enhancements like blur, kaleido, etc.
+
+GETTING STARTED:
+1. Create a Plugin Config node first
+2. Choose your usage type (main/preprocessor/postprocessor)
+3. Add input nodes based on your mode
+4. Connect nodes by dragging from output to input handles
+5. Toggle the code icon to see the Python code!
+
+Press the Generate button in the header to create your plugin.`,
+    },
+  },
+  lessonFirstProcessor: {
+    label: "First Processor",
+    config: {
+      title: "2. Creating Your First Processor",
+      content: `Let's create a simple postprocessor! 🚀
+
+STEP 1: Set Usage
+• In Plugin Config, set Usage to "postprocessor"
+
+STEP 2: Add Video Input
+• Expand Input category
+• Drag "Video Input" to canvas
+
+STEP 3: Add an Effect
+• Expand Effects category (now visible!)
+• Drag "Brightness" or "Blur" to canvas
+
+STEP 4: Connect Nodes
+• Click the right handle of Video Input
+• Drag to the left handle of your effect
+
+STEP 5: Add Output
+• Expand Output category
+• Drag "Postprocessor Output" to canvas
+• Connect your effect to it
+
+STEP 6: Generate!
+• Click Generate to create your plugin
+
+Congratulations! You've created your first processor!`,
+    },
+  },
+  lessonNodeTypes: {
+    label: "Node Types",
+    config: {
+      title: "3. Understanding Node Types",
+      content: `Each node serves a purpose in your pipeline! 📦
+
+INPUT NODES:
+• Video Input - Accepts video frames from camera/file
+• Text Prompt - Text input with weight for AI models
+• Image Input - Reference images for image-to-video
+• Parameters - Key-value config for runtime
+
+PIPELINE NODE:
+• Fetches AI pipelines from your Scope server
+• These are remote inference models
+• Toggle code to see the Python implementation
+
+PREPROCESSOR NODES:
+• Segmentation - Object detection/masking
+• Depth Estimation - Create depth maps
+• Background Removal - Transparent backgrounds
+• "New" - Create custom preprocessor
+
+EFFECT NODES:
+• Blur, Mirror, Kaleido, Vignette, etc.
+• "New" - Create custom effect
+• These modify frames visually
+
+POSTPROCESSOR NODES:
+• Color Grading - Professional color correction
+• Upscaling - AI resolution increase
+• Denoising - Remove noise
+• Style Transfer - Apply artistic styles
+
+OUTPUT NODES:
+• Pipeline Output - Main AI result
+• Preprocessor Output - Preprocessed data
+• Postprocessor Output - Final processed result`,
+    },
+  },
+  lessonPreprocessors: {
+    label: "Preprocessors",
+    config: {
+      title: "4. Working with Preprocessors",
+      content: `Preprocessors modify input before the main AI pipeline! 🔧
+
+WHEN TO USE:
+• You need to prepare input for AI models
+• Object masking before generation
+• Depth guidance for structure
+• Background removal for compositing
+
+AVAILABLE PREPROCESSORS:
+
+SEGMENTATION:
+• Detects and masks objects in frames
+• Use "person" class for portrait work
+• Outputs masks for guidance
+
+DEPTH ESTIMATION:
+• Creates depth maps from 2D frames
+• Great for VACE structural guidance
+• Helps maintain 3D consistency
+
+BACKGROUND REMOVAL:
+• Removes background with alpha channel
+• Outputs RGBA with transparency
+• Perfect for compositing
+
+CREATING CUSTOM:
+• Use "New" in Preprocessor category
+• Write Python code in code mode
+• Process frames before main pipeline
+
+TIPS:
+• Preprocessors run BEFORE the main pipeline
+• Connect output to main pipeline input
+• Can chain multiple preprocessors`,
+    },
+  },
+  lessonPostprocessors: {
+    label: "Postprocessors",
+    config: {
+      title: "5. Working with Postprocessors",
+      content: `Postprocessors enhance or modify the AI output! ✨
+
+WHEN TO USE:
+• After AI generation completes
+• Color correction and grading
+• Resolution enhancement
+• Adding visual effects
+
+AVAILABLE POSTPROCESSORS:
+
+COLOR GRADING:
+• Temperature, Tint, Saturation, Contrast
+• Professional color correction
+• Match footage styles
+
+UPSCALING:
+• AI-powered resolution increase
+• 2x or 4x scale options
+• Models: realesrgan, esrgan, swinir
+
+DENOISING:
+• Remove compression artifacts
+• Clean up noisy outputs
+• Strength adjustable
+
+STYLE TRANSFER:
+• Apply artistic styles
+• Anime, oil, sketch, watercolor
+• Adjustable strength
+
+EFFECTS (also postprocessors):
+• Brightness, Contrast, Blur
+• Mirror, Kaleido, Vignette
+• Many more visual effects
+
+CREATING CUSTOM:
+• Use "New" in Effects category
+• Write Python code in code mode
+• Process output frames
+
+TIPS:
+• Postprocessors run AFTER the main pipeline
+• Can chain multiple postprocessors
+• Effects category = visual postprocessors`,
+    },
+  },
+};
+
+export const useGraphStore = create<GraphState>((set, get) => ({
+  nodes: [],
+  edges: [],
+  selectedNode: null,
+
+  addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>) => {
+    let defaults = nodeDefaults[type] || { label: type, config: {} };
+    
+    // Handle pipeline_ type (e.g., pipeline_animateDiff)
+    if (type.startsWith("pipeline_")) {
+      const pipelineId = type.replace("pipeline_", "");
+      defaults = {
+        label: pipelineId,
+        config: { pipelineId, remoteInference: false },
+      };
+    }
+    
+    const newNode: Node<NodeData> = {
+      id: uuidv4(),
+      type: "scopeNode",
+      position,
+      selected: true,
+      data: {
+        label: defaults.label || type,
+        type,
+        config: { ...defaults.config, ...config },
+      },
+    };
+    set({ nodes: [...get().nodes, newNode], selectedNode: newNode.id });
+  },
+
+  addNodesWithEdges: (nodes, edges) => {
+    const newNodes: Node<NodeData>[] = nodes.map((n, index) => {
+      const defaults = nodeDefaults[n.type] || { label: n.type, config: {} };
+      return {
+        id: uuidv4(),
+        type: "scopeNode",
+        position: n.position,
+        selected: false,
+        data: {
+          label: defaults.label || n.type,
+          type: n.type,
+          config: { ...defaults.config, ...n.config },
+        },
+      };
+    });
+
+    // Create edges based on index positions
+    const newEdges: Edge[] = (edges || []).map((e) => ({
+      id: uuidv4(),
+      source: newNodes[e.source].id,
+      target: newNodes[e.target].id,
+      type: "smoothstep",
+      animated: true,
+    }));
+
+    // Select the pluginConfig node (first node)
+    const pluginConfigNode = newNodes.find(n => n.data.type === "pluginConfig");
+    const selectedId = pluginConfigNode?.id || newNodes[0]?.id;
+
+    set({
+      nodes: [...get().nodes, ...newNodes],
+      edges: [...get().edges, ...newEdges],
+      selectedNode: selectedId,
+    });
+  },
+
+  updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => {
+    set({
+      nodes: get().nodes.map((node) =>
+        node.id === nodeId
+          ? { ...node, data: { ...node.data, config: { ...node.data.config, ...config } } }
+          : node
+      ),
+    });
+  },
+
+  deleteNode: (nodeId: string) => {
+    set({
+      nodes: get().nodes.filter((node) => node.id !== nodeId),
+      edges: get().edges.filter(
+        (edge) => edge.source !== nodeId && edge.target !== nodeId
+      ),
+      selectedNode: get().selectedNode === nodeId ? null : get().selectedNode,
+    });
+  },
+
+  selectNode: (nodeId: string | null) => {
+    set({ selectedNode: nodeId });
+  },
+
+  clearAll: () => {
+    set({ nodes: [], edges: [], selectedNode: null });
+  },
+
+  addOutputNode: () => {
+    const { nodes, edges } = get();
+    if (nodes.length === 0) return;
+
+    // Find the plugin config to determine usage
+    const pluginConfig = nodes.find(n => n.data.type === "pluginConfig");
+    const usage = (pluginConfig?.data?.config?.usage as string) || "main";
+
+    // Determine output type based on usage
+    let outputType = "pipelineOutput";
+    if (usage === "preprocessor") outputType = "preprocessorOutput";
+    else if (usage === "postprocessor") outputType = "postprocessorOutput";
+
+    // Find the rightmost node to connect to
+    let rightmostNode = nodes[0];
+    let maxX = nodes[0].position.x;
+    for (const node of nodes) {
+      if (node.position.x > maxX) {
+        maxX = node.position.x;
+        rightmostNode = node;
+      }
+    }
+
+    // Add output node
+    const outputDefaults = nodeDefaults[outputType] || { label: outputType, config: {} };
+    const outputNode: Node<NodeData> = {
+      id: uuidv4(),
+      type: "scopeNode",
+      position: { x: maxX + 200, y: rightmostNode.position.y },
+      selected: true,
+      data: {
+        label: outputDefaults.label || outputType,
+        type: outputType,
+        config: outputDefaults.config || {},
+      },
+    };
+
+    // Create edge from rightmost node to output
+    const newEdge: Edge = {
+      id: uuidv4(),
+      source: rightmostNode.id,
+      target: outputNode.id,
+      type: "smoothstep",
+      animated: true,
+    };
+
+    set({
+      nodes: [...nodes, outputNode],
+      edges: [...edges, newEdge],
+      selectedNode: outputNode.id,
+    });
+  },
+
+  onNodesChange: (changes) => {
+    set({ nodes: applyNodeChanges(changes, get().nodes) });
+  },
+
+  onEdgesChange: (changes) => {
+    set({ edges: applyEdgeChanges(changes, get().edges) });
+  },
+
+  onConnect: (connection: Connection) => {
+    set({ edges: addEdge({ ...connection, id: uuidv4() }, get().edges) });
+  },
+}));

@@ -1,0 +1,162 @@
+/* Tailwind directives  */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ComfyUI-style: dark grays + subtle blue accent */
+@layer base {
+  :root {
+    --background: 220 13% 6%;
+    --foreground: 220 10% 96%;
+    --card: 220 12% 9%;
+    --card-foreground: 220 10% 96%;
+    --popover: 220 12% 9%;
+    --popover-foreground: 220 10% 96%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 10% 14%;
+    --secondary-foreground: 220 10% 96%;
+    --muted: 220 10% 14%;
+    --muted-foreground: 220 9% 55%;
+    --accent: 220 10% 14%;
+    --accent-foreground: 220 10% 96%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 10% 18%;
+    --input: 220 10% 14%;
+    --ring: 217 91% 60%;
+    --radius: 6px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings:
+      "rlig" 1,
+      "calt" 1;
+  }
+}
+
+/* React Flow – ComfyUI-style (blue handles, gray UI) */
+.react-flow__node {
+  font-family: var(--font-raleway), system-ui, sans-serif;
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 2px solid #1e293b;
+  transition: all 0.2s ease;
+}
+
+.react-flow__handle:hover {
+  background: #60a5fa;
+  transform: scale(1.1);
+}
+
+.react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 2;
+  stroke-opacity: 0.85;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #60a5fa;
+  stroke-width: 2.5;
+}
+
+.react-flow__controls {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.react-flow__controls-button {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #94a3b8 !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+.react-flow__minimap {
+  background: #1e293b;
+  border-radius: 6px;
+  border: 1px solid #334155;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+.react-flow__background pattern circle {
+  fill: #334155;
+}
+
+/* Hide ReactFlow scrollbars */
+.react-flow__pane,
+.react-flow__minimap,
+.react-flow__controls {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.react-flow__pane::-webkit-scrollbar,
+.react-flow__minimap::-webkit-scrollbar,
+.react-flow__controls::-webkit-scrollbar {
+  display: none;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: transparent;
+}
+
+/* Hide scrollbar for all elements */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Node selected – subtle blue ring */
+.node-selected {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+}
+
+/* Panel Glass Effect */
+.glass-panel {
+  background: rgba(24, 24, 27, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(63, 63, 70, 0.5);
+}
+
+/* Canvas grid – ComfyUI-style subtle dots */
+.canvas-grid {
+  background-color: #0f172a;
+  background-image:
+    linear-gradient(to right, rgba(51, 65, 85, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(51, 65, 85, 0.15) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
