@@ -27,7 +27,6 @@ interface HeaderProps {
   onOpenAI: () => void;
   onToggleSidebar: () => void;
   sidebarOpen: boolean;
-  onPreview: () => void;
   user: { email?: string; avatar_url?: string } | null;
   onAuthClick: () => void;
   isScopeConnected?: boolean;
@@ -43,7 +42,6 @@ export default function Header({
   onOpenAI, 
   onToggleSidebar, 
   sidebarOpen,
-  onPreview,
   user,
   onAuthClick,
   isScopeConnected,

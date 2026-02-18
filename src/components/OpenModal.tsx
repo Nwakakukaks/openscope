@@ -166,10 +166,9 @@ function parsePluginFile(content: string): Array<{ type: string; position: { x: 
     position: { x: 50 + NODE_WIDTH + HORIZONTAL_GAP, y: 50 },
   });
 
-  // Use a default valid pipeline ID (longlive for main, passthrough for pre/post)
-  const defaultPipelineId = (usage === 'main') ? 'longlive' : 'passthrough';
+  // Use the pipeline ID from the plugin config, not hardcoded
   nodes.push({
-    type: `pipeline_${defaultPipelineId}`,
+    type: `pipeline_${pipelineId}`,
     position: { x: 50 + 2 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 },
   });
 

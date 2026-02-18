@@ -245,13 +245,30 @@ export function useScopeServer() {
       });
 
       // Add local video track if provided
+      let transceiver: RTCRtpTransceiver | undefined;
       if (localStream) {
         localStream.getVideoTracks().forEach(track => {
-          pc.addTrack(track, localStream);
+          const sender = pc.addTrack(track, localStream);
+          transceiver = pc.getTransceivers().find(t => t.sender === sender);
         });
         localStream.getAudioTracks().forEach(track => {
           pc.addTrack(track, localStream);
         });
+      } else {
+        console.log("[OpenScope] No video stream - adding video transceiver for no-input pipelines");
+        transceiver = pc.addTransceiver("video");
+      }
+
+      // Force VP8 codec for aiortc compatibility (like Scope)
+      if (transceiver) {
+        const codecs = RTCRtpReceiver.getCapabilities("video")?.codecs || [];
+        const vp8Codecs = codecs.filter(
+          c => c.mimeType.toLowerCase() === "video/vp8"
+        );
+        if (vp8Codecs.length > 0) {
+          transceiver.setCodecPreferences(vp8Codecs);
+          console.log("[OpenScope] Forced VP8-only codec for aiortc compatibility");
+        }
       }
 
       pc.ontrack = (event) => {
@@ -280,7 +297,7 @@ export function useScopeServer() {
         type: pc.localDescription?.type,
         initialParameters: initialParameters,
       };
-      console.log("[OpenScope] Full request body:", requestBody);
+      console.log("[OpenScope] Full request body:", JSON.stringify(requestBody, null, 2));
 
       const response = await fetch(`${SCOPE_API_URL}/webrtc/offer`, {
         method: "POST",

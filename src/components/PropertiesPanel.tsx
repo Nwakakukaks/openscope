@@ -368,9 +368,9 @@ export default function PropertiesPanel() {
         ) : (
           <div className="space-y-4">
             {configFields.map((field) => {
-              const configKey = field.label.toLowerCase();
-              const value = node.data.config[configKey] ??
-                node.data.config[field.label] ??
+              // Use exact key match first (case-sensitive), then try lowercase
+              const value = node.data.config[field.label] ??
+                node.data.config[field.label.toLowerCase()] ??
                 (field.type === "slider" || field.type === "number" ? 0 :
                   field.type === "toggle" ? false : "");
 
@@ -388,7 +388,7 @@ export default function PropertiesPanel() {
                       className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
                       value={String(value)}
                       onChange={(e) =>
-                        updateNodeConfig(node.id, { [field.label.toLowerCase()]: e.target.value })
+                        updateNodeConfig(node.id, { [field.label]: e.target.value })
                       }
                     />
                   )}
@@ -399,7 +399,7 @@ export default function PropertiesPanel() {
                       rows={field.label === "Content" ? 22 : 3}
                       value={String(value)}
                       onChange={(e) =>
-                        updateNodeConfig(node.id, { [field.label.toLowerCase()]: e.target.value })
+                        updateNodeConfig(node.id, { [field.label]: e.target.value })
                       }
                     />
                   )}
@@ -412,7 +412,7 @@ export default function PropertiesPanel() {
                       max={field.max}
                       value={Number(value)}
                       onChange={(e) =>
-                        updateNodeConfig(node.id, { [field.label.toLowerCase()]: parseFloat(e.target.value) })
+                        updateNodeConfig(node.id, { [field.label]: parseFloat(e.target.value) })
                       }
                     />
                   )}
@@ -432,7 +432,7 @@ export default function PropertiesPanel() {
                         step={0.1}
                         value={Number(value)}
                         onChange={(e) =>
-                          updateNodeConfig(node.id, { [field.label.toLowerCase()]: parseFloat(e.target.value) })
+                          updateNodeConfig(node.id, { [field.label]: parseFloat(e.target.value) })
                         }
                       />
                     </div>
@@ -443,7 +443,7 @@ export default function PropertiesPanel() {
                       className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
                       value={String(value)}
                       onChange={(e) =>
-                        updateNodeConfig(node.id, { [field.label.toLowerCase()]: e.target.value })
+                        updateNodeConfig(node.id, { [field.label]: e.target.value })
                       }
                     >
                       {field.options.map((opt) => (
@@ -459,7 +459,7 @@ export default function PropertiesPanel() {
                       type="button"
                       disabled={field.readonly}
                       onClick={() =>
-                        !field.readonly && updateNodeConfig(node.id, { [field.label.toLowerCase()]: !value })
+                        !field.readonly && updateNodeConfig(node.id, { [field.label]: !value })
                       }
                       className={`w-8 h-4 rounded-full transition-colors ${value ? "bg-primary" : "bg-background border border-border"} ${field.readonly ? "opacity-50 cursor-not-allowed" : ""}`}
                     >
@@ -480,7 +480,7 @@ export default function PropertiesPanel() {
                           const file = e.target.files?.[0];
                           if (file) {
                             // Store file reference for now - the actual stream will be created when running
-                            updateNodeConfig(node.id, { [field.label.toLowerCase()]: file.name });
+                            updateNodeConfig(node.id, { [field.label]: file.name });
                             // Dispatch event so parent can handle the file
                             window.dispatchEvent(new CustomEvent('openscope:video-upload', { detail: { file, nodeId: node.id } }));
                           }

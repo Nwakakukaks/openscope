@@ -460,12 +460,17 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     label: string;
     type: string;
     config: Record<string, unknown>;
+    localStream?: MediaStream | null;
+    remoteStream?: MediaStream | null;
+    isStreaming?: boolean;
   };
   const selectNode = useGraphStore((state) => state.selectNode);
   const deleteNode = useGraphStore((state) => state.deleteNode);
   const updateNodeConfig = useGraphStore((state) => state.updateNodeConfig);
   const imageFileRef = useRef<HTMLInputElement>(null);
   const videoFileRef = useRef<HTMLInputElement>(null);
+  const inputVideoRef = useRef<HTMLVideoElement>(null);
+  const outputVideoRef = useRef<HTMLVideoElement>(null);
 
   const isInput = ["videoInput", "textPrompt", "imageInput", "parameters"].includes(nodeData.type);
   const isOutput = ["pipelineOutput", "preprocessorOutput", "postprocessorOutput"].includes(nodeData.type);
@@ -477,6 +482,22 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   
   const showLeftHandle = !isEntryPoint;
   const showRightHandle = !isOutput;
+
+  // Auto-play input video stream
+  useEffect(() => {
+    if (nodeData.type === "videoInput" && inputVideoRef.current && nodeData.localStream) {
+      inputVideoRef.current.srcObject = nodeData.localStream;
+      inputVideoRef.current.play().catch(console.error);
+    }
+  }, [nodeData.type, nodeData.localStream]);
+
+  // Auto-play output video stream
+  useEffect(() => {
+    if (isOutput && outputVideoRef.current && nodeData.remoteStream) {
+      outputVideoRef.current.srcObject = nodeData.remoteStream;
+      outputVideoRef.current.play().catch(console.error);
+    }
+  }, [isOutput, nodeData.remoteStream]);
 
   // Auto-initialize code when first entering code mode
   useEffect(() => {
@@ -514,6 +535,8 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       video.src = url;
       video.muted = true;
       video.playsInline = true;
+      video.loop = true;
+      video.autoplay = true;
       video.onloadedmetadata = () => {
         const canvas = document.createElement('canvas');
         canvas.width = video.videoWidth;
@@ -522,7 +545,11 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         const stream = canvas.captureStream(15);
         video.play();
         const drawFrame = () => {
-          if (video.paused || video.ended) return;
+          if (video.paused || video.ended) {
+            // Restart video if ended (for non-looping videos)
+            video.currentTime = 0;
+            video.play().catch(() => {});
+          }
           ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
           requestAnimationFrame(drawFrame);
         };
@@ -689,16 +716,26 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         </div>
       )}
 
-      {/* Video Input: placeholder + choose file */}
+      {/* Video Input: placeholder + choose file or live stream */}
       {showVideoPreview && !isCodeMode && (
         <div className="px-3 pb-3 space-y-2">
           <div className="mt-2 rounded overflow-hidden bg-background border border-border aspect-video flex items-center justify-center min-h-[80px]">
-            {videoPreviewUrl ? (
+            {nodeData.isStreaming && nodeData.localStream ? (
+              <video
+                ref={inputVideoRef}
+                className="max-w-full max-h-[120px] object-contain"
+                autoPlay
+                muted
+                playsInline
+              />
+            ) : videoPreviewUrl ? (
               <video
                 src={videoPreviewUrl}
                 className="max-w-full max-h-[120px] object-contain"
                 muted
                 playsInline
+                autoPlay
+                loop
               />
             ) : (
               <Video className="w-8 h-8 text-muted-foreground" />
@@ -725,6 +762,28 @@ function ScopeNode({ id, data, selected }: NodeProps) {
             className="hidden"
             onChange={(e) => handleFileChange(e, true)}
           />
+        </div>
+      )}
+
+      {/* Output Nodes: show processed video stream */}
+      {isOutput && !isCodeMode && (
+        <div className="px-3 pb-3 space-y-2">
+          <div className="mt-2 rounded overflow-hidden bg-background border border-border aspect-video flex items-center justify-center min-h-[80px]">
+            {nodeData.isStreaming && nodeData.remoteStream ? (
+              <video
+                ref={outputVideoRef}
+                className="max-w-full max-h-[120px] object-contain"
+                autoPlay
+                muted
+                playsInline
+              />
+            ) : (
+              <Play className="w-8 h-8 text-muted-foreground" />
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground text-center">
+            {nodeData.isStreaming ? "Processing..." : "Output will appear here"}
+          </div>
         </div>
       )}
 

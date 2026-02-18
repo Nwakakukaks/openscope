@@ -1,7 +1,7 @@
 """API routers."""
 
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from fastapi import APIRouter, HTTPException
 import httpx
@@ -25,7 +25,12 @@ class WebRTCOfferRequest(BaseModel):
 
     sdp: Optional[str] = None
     type: Optional[str] = None
-    initial_parameters: Optional[Dict[str, Any]] = None
+    initialParameters: Optional[Dict[str, Any]] = Field(
+        default=None, description="Initial parameters for the session"
+    )
+    user_id: Optional[str] = None
+    connection_id: Optional[str] = None
+    connection_info: Optional[Dict[str, Any]] = None
 
 
 class CloudConnectRequest(BaseModel):

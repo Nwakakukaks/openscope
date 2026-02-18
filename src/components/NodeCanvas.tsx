@@ -15,12 +15,19 @@ import "@xyflow/react/dist/style.css";
 import { useGraphStore, nodeDefaults } from "@/store/graphStore";
 import ScopeNode from "./ScopeNode";
 import { Wrench } from "lucide-react";
+import { useMemo } from "react";
 
 const nodeTypes = {
   scopeNode: ScopeNode as any,
 };
 
-export default function NodeCanvas() {
+interface NodeCanvasProps {
+  localStream?: MediaStream | null;
+  remoteStream?: MediaStream | null;
+  isStreaming?: boolean;
+}
+
+export default function NodeCanvas({ localStream, remoteStream, isStreaming }: NodeCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
@@ -31,6 +38,19 @@ export default function NodeCanvas() {
   const onConnect = useGraphStore((state) => state.onConnect);
   const addNode = useGraphStore((state) => state.addNode);
   const selectNode = useGraphStore((state) => state.selectNode);
+
+  // Inject stream references into node data for video preview
+  const nodesWithStreams = useMemo(() => {
+    return nodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        localStream,
+        remoteStream,
+        isStreaming,
+      },
+    }));
+  }, [nodes, localStream, remoteStream, isStreaming]);
 
   useEffect(() => {
     if (wrapperRef.current) {
@@ -75,7 +95,7 @@ export default function NodeCanvas() {
     <div ref={wrapperRef} className="flex-1 min-h-0 relative" style={{ width: '100%', height: '100%' }}>
       {dimensions.width > 0 && dimensions.height > 0 && (
         <ReactFlow
-          nodes={nodes}
+          nodes={nodesWithStreams}
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}

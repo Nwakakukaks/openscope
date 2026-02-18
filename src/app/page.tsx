@@ -5,7 +5,6 @@ import Header from "@/components/Header";
 import NodePalette from "@/components/NodePalette";
 import NodeCanvas from "@/components/NodeCanvas";
 import PropertiesPanel from "@/components/PropertiesPanel";
-import PreviewPanel from "@/components/PreviewPanel";
 import TemplateModal from "@/components/TemplateModal";
 import AIAssistant from "@/components/AIAssistant";
 import SaveModal from "@/components/SaveModal";
@@ -22,7 +21,6 @@ export default function Home() {
   const [showSave, setShowSave] = useState(false);
   const [showOpen, setShowOpen] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
   const selectedNode = useGraphStore((state) => state.selectedNode);
@@ -47,56 +45,55 @@ export default function Home() {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   
-  const localVideoRef = useRef<HTMLVideoElement | null>(null);
-
-  // Handle video upload from node properties
-  useEffect(() => {
-    const handleVideoUpload = (event: Event) => {
-      const customEvent = event as CustomEvent<{ file: File; nodeId: string }>;
-      handleVideoUploadFromFile(customEvent.detail.file);
-    };
-    
-    const handleVideoStreamReady = (event: Event) => {
-      const customEvent = event as CustomEvent<{ stream: MediaStream; nodeId: string }>;
-      console.log("[OpenScope] Video stream ready from node:", customEvent.detail.nodeId);
-      setLocalStream(customEvent.detail.stream);
-    };
-    
-    window.addEventListener('openscope:video-upload', handleVideoUpload);
-    window.addEventListener('openscope:video-stream-ready', handleVideoStreamReady);
-    return () => {
-      window.removeEventListener('openscope:video-upload', handleVideoUpload);
-      window.removeEventListener('openscope:video-stream-ready', handleVideoStreamReady);
-    };
-  }, []);
+  const videoElementRef = useRef<HTMLVideoElement | null>(null);
 
   const handleVideoUploadFromFile = useCallback(async (file: File) => {
-    // Create video element to play the file
+    // Clean up previous video element if exists
+    if (videoElementRef.current) {
+      videoElementRef.current.pause();
+      videoElementRef.current.src = '';
+      videoElementRef.current = null;
+    }
+
+    // Create video element to play the file (like Scope does)
     const video = document.createElement('video');
     video.src = URL.createObjectURL(file);
     video.muted = true;
     video.playsInline = true;
+    video.loop = true; // Loop the video continuously
+    video.autoplay = true;
+    videoElementRef.current = video;
     
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error('Failed to load video'));
     });
     
-    // Create canvas and capture stream at 15fps (like Scope)
+    // Create canvas matching video resolution
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
     
-    const stream = canvas.captureStream(15); // 15fps like Scope
+    if (!ctx) {
+      throw new Error('Failed to get canvas context');
+    }
     
-    // Play video and draw frames to canvas
-    video.play();
+    // Start video playback
+    await video.play();
+    
+    // Continuous frame capture at 15fps (like Scope)
+    const FPS = 15;
+    const stream = canvas.captureStream(FPS);
+    
+    // Draw frames continuously using requestAnimationFrame
     const drawFrame = () => {
-      if (video.paused || video.ended) return;
-      ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (videoElementRef.current && ctx) {
+        ctx.drawImage(videoElementRef.current, 0, 0, canvas.width, canvas.height);
+      }
       requestAnimationFrame(drawFrame);
     };
-    video.onplay = drawFrame;
+    drawFrame();
     
     setLocalStream(stream);
   }, []);
@@ -125,18 +122,23 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Listen for video stream ready events from nodes
+  useEffect(() => {
+    const handleVideoStreamReady = (event: Event) => {
+      const customEvent = event as CustomEvent<{ stream: MediaStream; nodeId: string }>;
+      console.log("[OpenScope] Video stream ready from node:", customEvent.detail.nodeId);
+      setLocalStream(customEvent.detail.stream);
+    };
+    
+    window.addEventListener('openscope:video-stream-ready', handleVideoStreamReady);
+    return () => {
+      window.removeEventListener('openscope:video-stream-ready', handleVideoStreamReady);
+    };
+  }, []);
+
   const handleSave = async (name: string, description: string) => {
     await saveWorkflow(name, description);
   };
-
-  const handlePreview = () => {
-    addOutputNode();
-    setShowPreview(true);
-  };
-
-  const handleVideoUpload = useCallback(async (file: File) => {
-    await handleVideoUploadFromFile(file);
-  }, [handleVideoUploadFromFile]);
 
   const handleStartStream = useCallback(async () => {
     if (!isScopeConnected) {
@@ -207,6 +209,14 @@ export default function Home() {
       }
       
       console.log("[OpenScope] Initial parameters being sent:", JSON.stringify(initialParameters, null, 2));
+      console.log("[OpenScope] Local stream for WebRTC:", localStream ? "available" : "NOT AVAILABLE");
+      console.log("[OpenScope] Video tracks:", localStream?.getVideoTracks().length);
+      
+      if (!localStream) {
+        alert("Please upload a video in the Video Input node first");
+        setIsLoading(false);
+        return;
+      }
       
       // Start WebRTC - localStream will be sent if user uploaded video in Preview panel
       await startWebRTC((stream) => {
@@ -228,13 +238,6 @@ export default function Home() {
     setRemoteStream(null);
   }, [stopWebRTC]);
 
-  const handleClosePreview = useCallback(() => {
-    if (isStreaming) {
-      handleStopStream();
-    }
-    setShowPreview(false);
-  }, [isStreaming, handleStopStream]);
-
   return (
     <div className="h-screen w-screen flex flex-col bg-background overflow-hidden">
       <Header
@@ -244,7 +247,6 @@ export default function Home() {
         onOpenAI={() => setShowAI(true)}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         sidebarOpen={sidebarOpen}
-        onPreview={handlePreview}
         user={user}
         onAuthClick={() => setShowAuth(true)}
         isScopeConnected={isScopeConnected}
@@ -255,21 +257,12 @@ export default function Home() {
       <div className="flex-1 flex min-h-0 w-full">
         {sidebarOpen && <NodePalette />}
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
-          <NodeCanvas />
-          {showPreview && (
-            <div className="absolute bottom-0 left-0 right-0 z-10">
-              <PreviewPanel
-                onClose={handleClosePreview}
-                remoteStream={remoteStream}
-                localStream={localStream}
-                isStreaming={isStreaming}
-                isLoading={isLoading}
-                onStartStream={handleStartStream}
-                onStopStream={handleStopStream}
-                onVideoUpload={handleVideoUpload}
-              />
-            </div>
-          )}
+          <NodeCanvas 
+            localStream={localStream} 
+            remoteStream={remoteStream}
+            isStreaming={isStreaming}
+          />
+         
         </div>
         {selectedNode && <PropertiesPanel />}
       </div>
