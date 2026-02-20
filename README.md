@@ -10,15 +10,13 @@ OpenScope is a visual plugin builder that lets you create AI video processing pi
 
 We built OpenScope to make video AI processing accessible to everyone. Instead of writing Python code, you can visually compose processors using an intuitive node-based interface. Whether you want to create pre-processors, post-processors, or full AI pipelines, OpenScope makes it simple.
 
-## Features (MVP)
+## Features
 
-- **Video Input/Output** - Upload video files and receive processed video output
-- **Reactive Code Blocks** - Toggle to see live Python code that updates instantly when you change parameters
+- **Visual Node Builder** - Drag and drop nodes to create custom pipelines
+- **Real-time Code Preview** - Toggle to see live Python code that updates instantly when you change parameters
 - **Plugin Export** - Export as a valid Daydream-compatible plugin ZIP with correct folder structure
-- **Pre-processors** - Segmentation and Depth Estimation
-- **Post-processors** - Kaleido and VHS/Retro CRT effects
-- **AI-Assisted Processor Development (Beta)** - Use AI to generate custom processor code
-- **Massive Processor Library** - Larger library with more processors coming soon
+- **AI-Assisted Development (Beta)** - Describe what you want, and AI generates the Python code for your custom processor
+- **Dynamic Pipeline Library** - Processors are loaded dynamically from your Scope server
 
 ## Quick Start
 
@@ -32,7 +30,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) to use the builder.
 
-### Backend (Optional - required for AI features)
+### Backend (Required for full functionality)
 
 ```bash
 cd openscope/backend
@@ -41,7 +39,7 @@ cd openscope/backend
 cp .env.example .env
 
 # Edit .env and add your Groq API key (get free at https://console.groq.com)
-# Optional: Add GitHub token for publishing
+# Add your Scope server URL
 
 # Run the backend
 ./run.sh
@@ -49,12 +47,12 @@ cp .env.example .env
 
 The backend runs on port 3001 and proxies to the frontend.
 
-### Test Export Locally
+### Scope Server
 
-1. Build a pipeline by dragging nodes to canvas
-2. Configure your processor settings in the Properties panel
-3. Click "Export" → "Export as Plugin"
-4. Install the ZIP in Daydream Scope to test
+OpenScope connects to a Scope server for pipeline processing. You can:
+
+1. **Run locally**: `cd scope && uv run daydream-scope`
+2. **Deploy remotely**: See [DEPLOYMENT.md](../DEPLOYMENT.md) for deployment options
 
 ## Configuration
 
@@ -69,38 +67,46 @@ GROQ_API_KEY=your_groq_api_key
 # GitHub - Optional, for publishing plugins
 GITHUB_TOKEN=your_github_token
 
-# Scope API
+# Scope API - Your Scope server URL
 SCOPE_API_URL=http://localhost:8000
 ```
 
 ## Node Types
 
 ### Input Nodes
-- **Video Input** - Accept video frames
-- **Text Prompt** - Text prompts with weights  
-- **Image Input** - Reference images
-- **Parameters** - Configuration values
+- **Video Input** - Accept video frames from camera or file
+- **Text Prompt** - Text prompts with weights for generation
+- **Image Input** - Reference images for processing
 
-### Pre-processors (Working)
-- **Segmentation** - Detect and mask objects
-- **Depth Estimation** - Generate depth maps
+### Pipeline Nodes
+Dynamically loaded from your Scope server. These include video generation pipelines like:
+- LongLive
+- StreamDiffusion
+- And more from Scope's plugin system
 
-### Post-processors (Working)
-- **Kaleido** - Kaleidoscope symmetry effect
-- **VHS / Retro CRT** - Retro VHS scan line effect
+### Pre-processors
+Video processing nodes that run before the main pipeline:
+- **YOLO Mask** - Object detection and masking
+- **Kaleido (Pre)** - Kaleidoscope preprocessing
+- **Custom (Beta)** - AI-generate your own preprocessor
 
-### Coming Soon
-- Background Removal, Edge Detection, Depth Estimation, Realtime style transfer (Pre)
--  Color Grading, Upscaling and more effects like Chromatic Aberration, Halftone etc. (Post)
+### Post-processors
+Video processing nodes that run after the main pipeline:
+- **Bloom** - Glow effect
+- **Cosmic VFX** - Glitch, retro, distortion effects
+- **VFX Pack** - Color grading, edge detection, blur effects
+- **Kaleido (Post)** - Kaleidoscope symmetry effect
+- **Custom (Beta)** - AI-generate your own postprocessor
 
 ## Templates
 
 OpenScope includes starter templates:
 
 - **Blank Plugin** - Start from scratch
-- **Kaleido Effect** - Kaleidoscope mirror effect
+- **Kaleido Effect** - Kaleidoscope mirror effect  
 - **VHS Retro** - Retro CRT/VHS effect
-- **Segmentation** - Object masking preprocessor
+- **Object Mask** - YOLO-based object masking
+- **Bloom Effect** - Glow/bloom post-processing
 
 ## Export
 
@@ -111,28 +117,15 @@ Click "Export" to generate Python code that can be installed as a Scope plugin:
 uv run daydream-scope install -e /path/to/your-plugin
 ```
 
-## Future Plans
+## Deployment
 
-- Expand processor library with more pre and post-processors
-- Enable community-built processors (anyone can contribute and earn from their efforts)
-- Finetune agent assisted development
-- Improve real-time preview capabilities
+See [DEPLOYMENT.md](../DEPLOYMENT.md) for deploying OpenScope and Scope to production.
 
-## Contributing
+### Quick Deploy
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### PR Process
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Issue Reporting
-
-Found a bug or have a feature request? Please open an issue on GitHub.
+1. **Scope** → Deploy to Render (or RunPod for GPU)
+2. **OpenScope Backend** → Deploy to Render
+3. **OpenScope Frontend** → Deploy to Vercel
 
 ## Tech Stack
 
