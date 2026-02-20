@@ -88,8 +88,14 @@ export default function Header({
         </button>
         <div className="flex items-center gap-2">
           <div>
+            <div className="flex items-start gap-1">
             <h1 className="text-lg font-semibold text-foreground leading-tight">OpenScope</h1>
-            <p className="text-[10px] text-muted-foreground -mt-0.5">Plugin Builder</p>
+            <span className="text-[9px] px-2 py-0.5 bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 rounded-full">
+              Beta
+            </span>
+            </div>
+       
+            {/* <p className="text-[10px] text-muted-foreground -mt-0.5">Plugin Builder</p> */}
           </div>
         </div>
         <div className="h-8 w-px bg-border mx-2" />

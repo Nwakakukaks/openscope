@@ -347,7 +347,7 @@ export default function NodePalette() {
       </div>
       <div className="p-3 border-t border-border">
         <div className="text-xs text-muted-foreground text-center">
-          Built with ❤️ by @serial winner
+          This service is currently on Beta ❤️ 
         </div>
       </div>
     </aside>
