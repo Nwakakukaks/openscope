@@ -45,7 +45,7 @@ export default function Home() {
         {/* Hero Image */}
         <div className="max-w-5xl mx-auto mt-16">
           <Image 
-            src="/hero1.png" 
+            src="/hero2.png" 
             alt="OpenScope Visual Builder"
             width={1200}
             height={675}

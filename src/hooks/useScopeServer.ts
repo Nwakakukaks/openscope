@@ -45,10 +45,13 @@ export interface CloudStatus {
 
 const SCOPE_API_URL = "/api/scope";
 
-// Get backend URL - use relative path in production, localhost:3001 in dev
 const getBackendUrl = () => {
   if (typeof window === 'undefined') return '';
-  // In development, use localhost:3001; in production, use relative path
+  // Use custom API URL if set (for Vercel deployments)
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  // In development, use localhost:3001
   return window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 };
 
