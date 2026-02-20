@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: openscope-backend
+    env: python
+    region: oregon
+    buildCommand: |
+      pip install uv
+      uv sync --frozen
+    startCommand: uvicorn openscope_backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SCOPE_API_URL
+        sync: false
+      - key: DEBUG
+        value: "false"
+    autoDeploy: true
