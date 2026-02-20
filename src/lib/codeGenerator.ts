@@ -7,9 +7,490 @@ interface NodeData {
 }
 
 const EFFECT_NODES = [
-  "brightness", "contrast", "blur", "mirror", "kaleido", "blend", "vignette",
-  "segmentation", "depthEstimation", "backgroundRemoval",
-  "colorGrading", "upscaling", "denoising", "styleTransfer", "mask"
+  "brightness", "contrast", "blur", "mirror", "kaleido", "kaleidoscope", "blend", "vignette",
+  "segmentation", "depthEstimation", "backgroundRemoval", "yoloMask",
+  "colorGrading", "upscaling", "denoising", "styleTransfer", "mask",
+  "chromatic", "vhs", "halftone", "bloom", "cosmicVFX", "vfxPack",
+  "custom" // User-defined custom effects
+];
+
+const KALEIDO_HELPER = `def _apply_kaleido(video, slices=6, rotation=0, zoom=1.0):
+    import math
+    import torch.nn.functional as F
+    
+    H = video[0].shape[1]
+    W = video[0].shape[2]
+    device = video[0].device
+    
+    grid_y = torch.linspace(-1, 1, H, device=device)
+    grid_x = torch.linspace(-1, 1, W, device=device)
+    gy, gx = torch.meshgrid(grid_y, grid_x, indexing='ij')
+    
+    if zoom != 1.0:
+        gx = gx / zoom
+        gy = gy / zoom
+    
+    if slices >= 2:
+        r = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        theta = torch.atan2(gy, gx)
+        theta = theta + math.radians(rotation)
+        wedge = 2 * math.pi / slices
+        phi = torch.remainder(theta, wedge)
+        phi = torch.minimum(phi, wedge - phi)
+        gx = r * torch.cos(phi)
+        gy = r * torch.sin(phi)
+    
+    gx = gx.clamp(-1, 1)
+    gy = gy.clamp(-1, 1)
+    grid = torch.stack((gx, gy), dim=-1).unsqueeze(0)
+    
+    result = []
+    for frame in video:
+        frame = frame.float() / 255.0 if frame.max() > 1 else frame.float()
+        nchw = frame.permute(0, 3, 1, 2)
+        sampled = F.grid_sample(nchw, grid, mode='bilinear', padding_mode='border', align_corners=True)
+        out = sampled.permute(0, 2, 3, 1)
+        result.append(out)
+    return result`;
+
+const KALEIDOSCOPE_HELPER = `def _apply_kaleidoscope(frames, enabled=True, mix=1.0, mirror_mode="none", rotational_enabled=True, rotational_slices=6, rotation_deg=0.0, zoom=1.0, warp=0.0):
+    import math
+    import torch.nn.functional as F
+    
+    if not enabled:
+        return frames
+    
+    T, H, W, C = frames.shape
+    device = frames.device
+    
+    grid_y = torch.linspace(-1, 1, H, device=device)
+    grid_x = torch.linspace(-1, 1, W, device=device)
+    gy, gx = torch.meshgrid(grid_y, grid_x, indexing='ij')
+    
+    if warp != 0:
+        r = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        theta = torch.atan2(gy, gx)
+        r = r + warp * r * r
+        gx = r * torch.cos(theta)
+        gy = r * torch.sin(theta)
+    
+    if zoom != 1.0:
+        gx = gx / zoom
+        gy = gy / zoom
+    
+    if mirror_mode == "2x":
+        gx = torch.abs(gx)
+    elif mirror_mode == "4x":
+        gx = torch.abs(gx)
+        gy = torch.abs(gy)
+    elif mirror_mode == "kaleido6":
+        pass
+    
+    if rotational_enabled and rotational_slices >= 2:
+        r = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        theta = torch.atan2(gy, gx)
+        theta = theta + math.radians(rotation_deg)
+        wedge = 2 * math.pi / rotational_slices
+        phi = torch.remainder(theta, wedge)
+        phi = torch.minimum(phi, wedge - phi)
+        gx = r * torch.cos(phi)
+        gy = r * torch.sin(phi)
+    
+    gx = gx.clamp(-1, 1)
+    gy = gy.clamp(-1, 1)
+    grid = torch.stack([gx, gy], dim=-1)
+    grid = grid.unsqueeze(0).unsqueeze(0).expand(T, -1, -1, -1)
+    
+    frames_nchw = frames.permute(0, 3, 1, 2)
+    sampled = F.grid_sample(frames_nchw, grid, mode='bilinear', padding_mode='border', align_corners=True)
+    result = sampled.permute(0, 2, 3, 1)
+    
+    if mix < 1.0:
+        result = frames * (1 - mix) + result * mix
+    
+    return result.clamp(0, 1)`;
+
+const VIGNETTE_HELPER = `def _apply_vignette(video, intensity=0.5, smoothness=0.5):
+    result = []
+    for frame in video:
+        H, W = frame.shape[1], frame.shape[2]
+        grid_y = torch.linspace(-1, 1, H, device=frame.device)
+        grid_x = torch.linspace(-1, 1, W, device=frame.device)
+        gy, gx = torch.meshgrid(grid_y, grid_x, indexing='ij')
+        dist = torch.sqrt(gx * gx + gy * gy)
+        vignette = torch.clamp((dist - 0.3) / (1 - smoothness + 0.01), 0, 1)
+        vignette = 1 - vignette * intensity
+        frame = frame * vignette.view(1, H, W, 1)
+        result.append(frame)
+    return result`;
+
+const COLOR_GRADING_HELPER = `def _apply_color_grading(video, temperature=0, tint=0, saturation=1, contrast=1):
+    result = []
+    for frame in video:
+        if temperature != 0:
+            if temperature > 0:
+                frame[..., 0] = frame[..., 0] * (1 + temperature * 0.1)
+                frame[..., 2] = frame[..., 2] * (1 - temperature * 0.1)
+            else:
+                frame[..., 0] = frame[..., 0] * (1 + temperature * 0.1)
+                frame[..., 2] = frame[..., 2] * (1 - temperature * 0.1)
+        if tint != 0:
+            frame[..., 1] = frame[..., 1] * (1 - tint * 0.1)
+        if saturation != 1:
+            gray = frame.mean(dim=-1, keepdim=True)
+            frame = gray + (frame - gray) * saturation
+        if contrast != 1:
+            mean = frame.mean()
+            frame = mean + (frame - mean) * contrast
+        result.append(torch.clamp(frame, 0, 1))
+    return result`;
+
+const CHROMATIC_HELPER = `def _apply_chromatic(frames, intensity=0.3, angle=0.0):
+    import math
+    
+    if intensity <= 0:
+        return frames
+    
+    max_shift = int(intensity * 20)
+    if max_shift == 0:
+        return frames
+    
+    rad = math.radians(angle)
+    dx = int(round(max_shift * math.cos(rad)))
+    dy = int(round(max_shift * math.sin(rad)))
+    
+    if dx == 0 and dy == 0:
+        return frames
+    
+    result = frames.clone()
+    result[..., 0] = torch.roll(frames[..., 0], shifts=(dy, dx), dims=(1, 2))
+    result[..., 2] = torch.roll(frames[..., 2], shifts=(-dy, -dx), dims=(1, 2))
+    
+    return result`;
+
+const VHS_HELPER = `def _apply_vhs(frames, scan_line_intensity=0.3, scan_line_count=100, noise=0.1, tracking=0.2):
+    import torch.nn.functional as F
+    
+    T, H, W, C = frames.shape
+    result = frames.clone()
+    
+    # Scan lines
+    if scan_line_intensity > 0 and scan_line_count > 0:
+        rows = torch.arange(H, device=frames.device, dtype=torch.float32)
+        wave = torch.sin(rows * (scan_line_count * 3.14159 / H))
+        mask = 1.0 - scan_line_intensity * 0.5 * (1.0 - wave)
+        result = result * mask.view(1, H, 1, 1)
+    
+    # Analog noise
+    if noise > 0:
+        grain = torch.randn_like(result) * (noise * 0.15)
+        result = result + grain
+    
+    # Tracking distortion
+    if tracking > 0:
+        max_shift = tracking * 0.05
+        rows_norm = torch.linspace(-1.0, 1.0, H, device=frames.device)
+        offsets = max_shift * torch.sin(rows_norm * 6.2832 * 3.0)
+        
+        grid_y = torch.linspace(-1.0, 1.0, H, device=frames.device)
+        grid_x = torch.linspace(-1.0, 1.0, W, device=frames.device)
+        gy, gx = torch.meshgrid(grid_y, grid_x, indexing="ij")
+        
+        gx = gx + offsets.view(H, 1)
+        
+        grid = torch.stack([gx, gy], dim=-1)
+        grid = grid.unsqueeze(0).expand(result.shape[0], -1, -1, -1)
+        
+        result_nchw = result.permute(0, 3, 1, 2)
+        result_nchw = F.grid_sample(result_nchw, grid, mode="bilinear", padding_mode="border", align_corners=True)
+        result = result_nchw.permute(0, 2, 3, 1)
+    
+    return result.clamp(0, 1)`;
+
+const HALFTONE_HELPER = `def _apply_halftone(frames, dot_size=8, sharpness=0.7):
+    import torch.nn.functional as F
+    
+    if dot_size < 2:
+        return frames
+    
+    T, H, W, C = frames.shape
+    device = frames.device
+    cell = int(dot_size)
+    
+    # Luminance
+    luma = 0.299 * frames[..., 0] + 0.587 * frames[..., 1] + 0.114 * frames[..., 2]
+    
+    # Cell-averaged luminance
+    pad_h = (cell - H % cell) % cell
+    pad_w = (cell - W % cell) % cell
+    luma_4d = luma.unsqueeze(1)
+    luma_padded = F.pad(luma_4d, (0, pad_w, 0, pad_h), mode="reflect")
+    cell_luma = F.avg_pool2d(luma_padded, cell, cell)
+    cell_luma = F.interpolate(cell_luma, size=(H + pad_h, W + pad_w), mode="nearest")
+    cell_luma = cell_luma[:, 0, :H, :W]
+    
+    # Distance from cell centre
+    y = torch.arange(H, device=device, dtype=torch.float32)
+    x = torch.arange(W, device=device, dtype=torch.float32)
+    gy, gx = torch.meshgrid(y, x, indexing="ij")
+    
+    local_y = (gy % cell) - (cell - 1) / 2.0
+    local_x = (gx % cell) - (cell - 1) / 2.0
+    dist = torch.sqrt(local_x * local_x + local_y * local_y)
+    
+    # Dot radius
+    max_r = cell / 2.0
+    dot_r = max_r * torch.sqrt((1.0 - cell_luma).clamp(0, 1))
+    
+    # Soft-edge mask
+    edge = max(0.3, (1.0 - sharpness) * max_r)
+    mask = torch.sigmoid((dot_r - dist.unsqueeze(0)) / edge * 6.0)
+    
+    # Composite
+    mask = mask.unsqueeze(-1)
+    result = frames * mask + (1.0 - mask)
+    
+    return result`;
+
+const BLOOM_HELPER = `def _apply_bloom(frames, threshold=0.8, soft_knee=0.5, intensity=1.0, radius=8, downsample=1, debug=False):
+    import torch.nn.functional as F
+    
+    T, H, W, C = frames.shape
+    device = frames.device
+    
+    # Downsample for performance
+    if downsample > 1:
+        H_ds = H // downsample
+        W_ds = W // downsample
+        frames_ds = F.interpolate(frames.view(-1, H, W, C).permute(0, 3, 1, 2), size=(H_ds, W_ds), mode='bilinear', align_corners=True)
+        frames_ds = frames_ds.permute(0, 2, 3, 1).view(T, H_ds, W_ds, C)
+    else:
+        frames_ds = frames
+        H_ds, W_ds = H, W
+    
+    # Extract bright areas
+    luma = 0.299 * frames_ds[..., 0] + 0.587 * frames_ds[..., 1] + 0.114 * frames_ds[..., 2]
+    
+    # Soft threshold with knee
+    soft = threshold + soft_knee
+    bright = torch.clamp((luma - threshold) / soft_knee, 0, 1) if soft_knee > 0 else (luma > threshold).float()
+    bright = bright.unsqueeze(-1)
+    
+    # Blur the bright areas
+    kernel_size = radius * 2 + 1
+    bright_blurred = F.avg_pool2d(bright.view(-1, 1, H_ds, W_ds).permute(0, 3, 1, 2), kernel_size, stride=1, padding=radius)
+    bright_blurred = bright_blurred.permute(0, 2, 3, 1).view(T, H_ds, W_ds, 1)
+    
+    # Upsample back
+    if downsample > 1:
+        bright_blurred = F.interpolate(bright_blurred.view(-1, H_ds, W_ds, 1).permute(0, 3, 1, 2), size=(H, W), mode='bilinear', align_corners=True)
+        bright_blurred = bright_blurred.permute(0, 2, 3, 1)
+    else:
+        bright_blurred = bright_blurred.expand(-1, -1, -1, C)
+    
+    # Apply bloom
+    result = frames + bright_blurred * intensity
+    
+    if debug:
+        return bright_blurred
+    
+    return result.clamp(0, 1)`;
+
+const COSMIC_VFX_HELPER = `def _apply_cosmic_vfx(frames, enable_glitch=False, glitch_shader="basic", glitch_intensity=1.0, enable_retro=False, retro_shader="vhs", retro_intensity=1.0, enable_distortion=False, distortion_shader="wave", distortion_intensity=1.0, enable_color=False, color_shader="hueshift", color_intensity=1.0, enable_edge=False, edge_shader="sobel", edge_intensity=1.0, enable_blur=False, blur_shader="gaussian", blur_intensity=1.0, intensity=1.0, speed=1.0, hue_shift=0.0, saturation=1.0, brightness=1.0, blend_mode="normal"):
+    import torch.nn.functional as F
+    
+    T, H, W, C = frames.shape
+    device = frames.device
+    result = frames.clone()
+    
+    # Color adjustments
+    if hue_shift != 0 or saturation != 1.0 or brightness != 1.0:
+        # Hue shift
+        if hue_shift != 0:
+            hsv = result
+            h = (hsv[..., 0] + hue_shift) % 1.0
+            result = torch.cat([h.unsqueeze(-1), hsv[..., 1:]], dim=-1)
+        
+        # Saturation
+        if saturation != 1.0:
+            gray = result[..., 0:1] * 0.299 + result[..., 1:2] * 0.587 + result[..., 2:3] * 0.114
+            result = gray + (result - gray) * saturation
+        
+        # Brightness
+        if brightness != 1.0:
+            result = result * brightness
+    
+    # Glitch effect
+    if enable_glitch and glitch_intensity > 0:
+        if glitch_shader == "basic":
+            # Random horizontal shifts
+            shift_amount = (torch.rand(T, device=device) * glitch_intensity * 20).long()
+            for t in range(T):
+                if shift_amount[t] > 0:
+                    result[t] = torch.roll(result[t], shifts=shift_amount[t].item(), dims=1)
+    
+    # Retro effect (VHS-style)
+    if enable_retro and retro_intensity > 0:
+        if retro_shader == "vhs":
+            # Scan lines
+            rows = torch.arange(H, device=device, dtype=torch.float32)
+            wave = torch.sin(rows * 0.1 * speed)
+            mask = 1.0 - retro_intensity * 0.3 * (1.0 - wave)
+            result = result * mask.view(1, H, 1, 1)
+            
+            # Analog noise
+            grain = torch.randn_like(result) * (retro_intensity * 0.1)
+            result = result + grain
+    
+    # Distortion effect
+    if enable_distortion and distortion_intensity > 0:
+        if distortion_shader == "wave":
+            grid_y = torch.linspace(-1, 1, H, device=device)
+            grid_x = torch.linspace(-1, 1, W, device=device)
+            gy, gx = torch.meshgrid(grid_y, grid_x, indexing='ij')
+            
+            offset = torch.sin(gy * 10 * speed) * distortion_intensity * 0.1
+            gx = gx + offset
+            
+            grid = torch.stack([gx, gy], dim=-1).unsqueeze(0).expand(T, -1, -1, -1)
+            result_nchw = result.permute(0, 3, 1, 2)
+            result = F.grid_sample(result_nchw, grid, mode='bilinear', padding_mode='border', align_corners=True)
+            result = result.permute(0, 2, 3, 1)
+    
+    # Edge detection
+    if enable_edge and edge_intensity > 0:
+        if edge_shader == "sobel":
+            gray = 0.299 * result[..., 0] + 0.587 * result[..., 1] + 0.114 * result[..., 2]
+            # Sobel kernels
+            kx = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32, device=device).view(1, 1, 3, 3)
+            ky = torch.tensor([[-1, -2, -1], [0, 0, 0], [1, 2, 1]], dtype=torch.float32, device=device).view(1, 1, 3, 3)
+            
+            gray_t = gray.unsqueeze(1)
+            gx = F.conv2d(gray_t.permute(0, 1, 2, 3).squeeze(0).unsqueeze(0), kx, padding=1).squeeze(0)
+            gy = F.conv2d(gray_t.permute(0, 1, 2, 3).squeeze(0).unsqueeze(0), ky, padding=1).squeeze(0)
+            edges = torch.sqrt(gx * gx + gy * gy)
+            
+            edges_norm = edges / (edges.max() + 1e-8)
+            edges_rgb = edges_norm.unsqueeze(-1).expand(-1, -1, -1, 3)
+            result = result * (1 - edges_rgb * edge_intensity) + edges_rgb * edge_intensity
+    
+    # Blur effect
+    if enable_blur and blur_intensity > 0:
+        if blur_shader == "gaussian":
+            radius = int(blur_intensity * 10)
+            if radius > 0:
+                kernel_size = radius * 2 + 1
+                result_nchw = result.permute(0, 3, 1, 2)
+                result = F.avg_pool2d(result_nchw, kernel_size, stride=1, padding=radius)
+                result = result.permute(0, 2, 3, 1)
+    
+    # Apply intensity and blend
+    result = frames * (1 - intensity) + result * intensity
+    
+    # Blend mode
+    if blend_mode == "screen":
+        result = 1 - (1 - frames) * (1 - result)
+    elif blend_mode == "multiply":
+        result = frames * result
+    elif blend_mode == "overlay":
+        result = torch.where(frames < 0.5, 2 * frames * result, 1 - 2 * (1 - frames) * (1 - result))
+    
+    return result.clamp(0, 1)`;
+
+const VFX_PACK_HELPER = `def _apply_vfx_pack(frames, chromatic_enabled=True, chromatic_intensity=0.3, chromatic_angle=0.0, vhs_enabled=False, scan_line_intensity=0.3, scan_line_count=100, vhs_noise=0.1, tracking_distortion=0.2, halftone_enabled=False, halftone_dot_size=8, halftone_sharpness=0.7):
+    import math
+    import torch.nn.functional as F
+    
+    T, H, W, C = frames.shape
+    device = frames.device
+    result = frames.clone()
+    
+    # Chromatic aberration
+    if chromatic_enabled and chromatic_intensity > 0:
+        max_shift = int(chromatic_intensity * 20)
+        if max_shift > 0:
+            rad = math.radians(chromatic_angle)
+            dx = int(round(max_shift * math.cos(rad)))
+            dy = int(round(max_shift * math.sin(rad)))
+            
+            if dx != 0 or dy != 0:
+                result[..., 0] = torch.roll(frames[..., 0], shifts=(dy, dx), dims=(1, 2))
+                result[..., 2] = torch.roll(frames[..., 2], shifts=(-dy, -dx), dims=(1, 2))
+    
+    # VHS effect
+    if vhs_enabled:
+        # Scan lines
+        if scan_line_intensity > 0 and scan_line_count > 0:
+            rows = torch.arange(H, device=device, dtype=torch.float32)
+            wave = torch.sin(rows * (scan_line_count * 3.14159 / H))
+            mask = 1.0 - scan_line_intensity * 0.5 * (1.0 - wave)
+            result = result * mask.view(1, H, 1, 1)
+        
+        # Analog noise
+        if vhs_noise > 0:
+            grain = torch.randn_like(result) * (vhs_noise * 0.15)
+            result = result + grain
+        
+        # Tracking distortion
+        if tracking_distortion > 0:
+            max_shift = tracking_distortion * 0.05
+            rows_norm = torch.linspace(-1.0, 1.0, H, device=device)
+            offsets = max_shift * torch.sin(rows_norm * 6.2832 * 3.0)
+            
+            grid_y = torch.linspace(-1.0, 1.0, H, device=device)
+            grid_x = torch.linspace(-1.0, 1.0, W, device=device)
+            gy, gx = torch.meshgrid(grid_y, grid_x, indexing="ij")
+            
+            gx = gx + offsets.view(H, 1)
+            
+            grid = torch.stack([gx, gy], dim=-1)
+            grid = grid.unsqueeze(0).expand(T, -1, -1, -1)
+            
+            result_nchw = result.permute(0, 3, 1, 2)
+            result_nchw = F.grid_sample(result_nchw, grid, mode="bilinear", padding_mode="border", align_corners=True)
+            result = result_nchw.permute(0, 2, 3, 1)
+    
+    # Halftone effect
+    if halftone_enabled and halftone_dot_size >= 2:
+        cell = int(halftone_dot_size)
+        
+        # Luminance
+        luma = 0.299 * result[..., 0] + 0.587 * result[..., 1] + 0.114 * result[..., 2]
+        
+        # Cell-averaged luminance
+        pad_h = (cell - H % cell) % cell
+        pad_w = (cell - W % cell) % cell
+        luma_4d = luma.unsqueeze(1)
+        luma_padded = F.pad(luma_4d, (0, pad_w, 0, pad_h), mode="reflect")
+        cell_luma = F.avg_pool2d(luma_padded, cell, cell)
+        cell_luma = F.interpolate(cell_luma, size=(H + pad_h, W + pad_w), mode="nearest")
+        cell_luma = cell_luma[:, 0, :H, :W]
+        
+        # Distance from cell centre
+        y = torch.arange(H, device=device, dtype=torch.float32)
+        x = torch.arange(W, device=device, dtype=torch.float32)
+        gy, gx = torch.meshgrid(y, x, indexing="ij")
+        
+        local_y = (gy % cell) - (cell - 1) / 2.0
+        local_x = (gx % cell) - (cell - 1) / 2.0
+        dist = torch.sqrt(local_x * local_x + local_y * local_y)
+        
+        # Dot radius
+        max_r = cell / 2.0
+        dot_r = max_r * torch.sqrt((1.0 - cell_luma).clamp(0, 1))
+        
+        # Soft-edge mask
+        edge = max(0.3, (1.0 - halftone_sharpness) * max_r)
+        mask = torch.sigmoid((dot_r - dist.unsqueeze(0)) / edge * 6.0)
+        
+        # Composite
+        mask = mask.unsqueeze(-1)
+        result = result * mask + (1.0 - mask)
+    
+    return result.clamp(0, 1)`;
+
+const SETTINGS_NODES = [
+  "noiseSettings", "vaceSettings", "resolutionSettings", "advancedSettings", "loraSettings"
 ];
 
 function toPascalCase(str: string): string {
@@ -24,15 +505,104 @@ function toTitleCase(str: string): string {
     .replace(/^(.)/, (_, c) => c.toUpperCase());
 }
 
-function generateSchemaFields(nodes: any[]): string {
-  const processingNodes = nodes.filter((n) => EFFECT_NODES.includes(n.data.type));
+function generateSchemaFields(nodes: any[], edges: any[]): string {
+  const processingNodes = getNodeOrder(nodes, edges);
+  const settingsNodes = nodes.filter((n) => SETTINGS_NODES.includes(n.data.type));
 
-  if (processingNodes.length === 0) {
+  if (processingNodes.length === 0 && settingsNodes.length === 0) {
     return "";
   }
 
   const fields: string[] = [];
   let order = 100;
+
+  // Generate fields for settings nodes
+  for (const node of settingsNodes) {
+    const config = node.data.config;
+    const type = node.data.type;
+
+    if (type === "noiseSettings") {
+      fields.push(`
+    noise_scale: float = Field(
+        default=${config.noiseScale ?? 0.7},
+        ge=0,
+        le=2,
+        description="Noise scale for generation",
+        json_schema_extra=ui_field_config(order=${order++}, component="noise", is_load_param=True),
+    )
+    noise_controller: bool = Field(
+        default=${config.noiseController !== false},
+        description="Enable noise controller",
+        json_schema_extra=ui_field_config(order=${order++}, component="noise", is_load_param=True),
+    )`);
+    }
+
+    if (type === "vaceSettings") {
+      fields.push(`
+    vace_enabled: bool = Field(
+        default=${config.vaceEnabled === true},
+        description="Enable VACE context guidance",
+        json_schema_extra=ui_field_config(order=${order++}, component="vace", is_load_param=True),
+    )
+    vace_context_scale: float = Field(
+        default=${config.vaceContextScale ?? 1.0},
+        ge=0,
+        le=2,
+        description="VACE context scale",
+        json_schema_extra=ui_field_config(order=${order++}, component="vace", is_load_param=True),
+    )`);
+    }
+
+    if (type === "resolutionSettings") {
+      fields.push(`
+    width: int = Field(
+        default=${config.width ?? 512},
+        ge=256,
+        le=2048,
+        description="Output width",
+        json_schema_extra=ui_field_config(order=${order++}, component="resolution"),
+    )
+    height: int = Field(
+        default=${config.height ?? 512},
+        ge=256,
+        le=2048,
+        description="Output height",
+        json_schema_extra=ui_field_config(order=${order++}, component="resolution"),
+    )`);
+    }
+
+    if (type === "advancedSettings") {
+      fields.push(`
+    denoising_steps: int = Field(
+        default=${config.denoisingSteps ?? 30},
+        ge=1,
+        le=100,
+        description="Number of denoising steps",
+        json_schema_extra=ui_field_config(order=${order++}, component="denoising_steps", is_load_param=True),
+    )
+    quantization: str = Field(
+        default="${config.quantization ?? ''}",
+        description="Quantization method",
+        json_schema_extra=ui_field_config(order=${order++}, component="quantization", is_load_param=True),
+    )
+    kv_cache_attention_bias: float = Field(
+        default=${config.kvCacheAttentionBias ?? 0.0},
+        ge=-1,
+        le=1,
+        description="KV cache attention bias",
+        json_schema_extra=ui_field_config(order=${order++}, is_load_param=True),
+    )`);
+    }
+
+    if (type === "loraSettings") {
+      fields.push(`
+    loras: list = Field(
+        default=[],
+        description="LoRA adapters",
+        json_schema_extra=ui_field_config(order=${order++}, component="lora", is_load_param=True),
+    )`);
+    }
+  }
 
   for (const node of processingNodes) {
     const config = node.data.config;
@@ -104,6 +674,60 @@ function generateSchemaFields(nodes: any[]): string {
         json_schema_extra=ui_field_config(order=${order++}, label="Zoom"),
     )`);
     }
+
+    if (type === "kaleidoscope") {
+      fields.push(`
+    kaleidoscope_enabled: bool = Field(
+        default=${config.enabled !== false},
+        description="Enable kaleidoscope effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Enabled"),
+    )
+    kaleidoscope_mix: float = Field(
+        default=${config.mix ?? 1.0},
+        ge=0,
+        le=1,
+        description="Blend original (0) to fully effected (1)",
+        json_schema_extra=ui_field_config(order=${order++}, label="Mix"),
+    )
+    kaleidoscope_mirror_mode: str = Field(
+        default="${config.mirrorMode ?? 'none'}",
+        description="Mirror symmetry mode: none, 2x, 4x, kaleido6",
+        json_schema_extra=ui_field_config(order=${order++}, label="Mirror Mode"),
+    )
+    kaleidoscope_rotational_enabled: bool = Field(
+        default=${config.rotationalEnabled !== false},
+        description="Enable N-fold rotational symmetry",
+        json_schema_extra=ui_field_config(order=${order++}, label="Rotational Symmetry"),
+    )
+    kaleidoscope_slices: int = Field(
+        default=${config.rotationalSlices ?? 6},
+        ge=3,
+        le=12,
+        description="Number of symmetry slices (N)",
+        json_schema_extra=ui_field_config(order=${order++}, label="Slices"),
+    )
+    kaleidoscope_rotation: float = Field(
+        default=${config.rotationDeg ?? 0.0},
+        ge=0,
+        le=360,
+        description="Rotate pattern (degrees)",
+        json_schema_extra=ui_field_config(order=${order++}, label="Rotation"),
+    )
+    kaleidoscope_zoom: float = Field(
+        default=${config.zoom ?? 1.0},
+        ge=0.5,
+        le=2,
+        description="Zoom into source before symmetry",
+        json_schema_extra=ui_field_config(order=${order++}, label="Zoom"),
+    )
+    kaleidoscope_warp: float = Field(
+        default=${config.warp ?? 0.0},
+        ge=-0.5,
+        le=0.5,
+        description="Radial warp amount",
+        json_schema_extra=ui_field_config(order=${order++}, label="Warp"),
+    )`);
+    }
     
     if (type === "vignette") {
       fields.push(`
@@ -152,6 +776,309 @@ function generateSchemaFields(nodes: any[]): string {
         le=1,
         description="Detection confidence threshold",
         json_schema_extra=ui_field_config(order=${order++}, label="Confidence"),
+    )`);
+    }
+
+    if (type === "yoloMask") {
+      fields.push(`
+    yolo_model_size: str = Field(
+        default="${config.modelSize ?? 'nano'}",
+        description="YOLO model variant: nano, small, medium, large, xlarge",
+        json_schema_extra=ui_field_config(order=${order++}, label="Model Size"),
+    )
+    yolo_output_mode: str = Field(
+        default="${config.outputMode ?? 'mask'}",
+        description="Output mode: mask=binary, overlay=blended",
+        json_schema_extra=ui_field_config(order=${order++}, label="Output Mode"),
+    )
+    yolo_target_class: str = Field(
+        default="${config.targetClass ?? 'person'}",
+        description="Object class to segment",
+        json_schema_extra=ui_field_config(order=${order++}, label="Target Class"),
+    )
+    yolo_confidence: float = Field(
+        default=${config.confidenceThreshold ?? 0.5},
+        ge=0,
+        le=1,
+        description="Detection confidence threshold",
+        json_schema_extra=ui_field_config(order=${order++}, label="Confidence"),
+    )
+    yolo_invert_mask: bool = Field(
+        default=${config.invertMask === true},
+        description="Invert the mask (segment background)",
+        json_schema_extra=ui_field_config(order=${order++}, label="Invert Mask"),
+    )`);
+    }
+
+    if (type === "bloom") {
+      fields.push(`
+    bloom_threshold: float = Field(
+        default=${config.threshold ?? 0.8},
+        ge=0,
+        le=1,
+        description="Brightness threshold for bloom extraction",
+        json_schema_extra=ui_field_config(order=${order++}, label="Threshold"),
+    )
+    bloom_soft_knee: float = Field(
+        default=${config.softKnee ?? 0.5},
+        ge=0,
+        le=1,
+        description="Softness of threshold transition",
+        json_schema_extra=ui_field_config(order=${order++}, label="Soft Knee"),
+    )
+    bloom_intensity: float = Field(
+        default=${config.intensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Bloom intensity multiplier",
+        json_schema_extra=ui_field_config(order=${order++}, label="Intensity"),
+    )
+    bloom_radius: int = Field(
+        default=${config.radius ?? 8},
+        ge=1,
+        le=48,
+        description="Blur radius for bloom effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Radius"),
+    )
+    bloom_downsample: int = Field(
+        default=${config.downsample ?? 1},
+        ge=1,
+        le=4,
+        description="Downsample factor (higher=faster)",
+        json_schema_extra=ui_field_config(order=${order++}, label="Downsample"),
+    )
+    bloom_debug: bool = Field(
+        default=${config.debug === true},
+        description="Enable debug logging",
+        json_schema_extra=ui_field_config(order=${order++}, label="Debug"),
+    )`);
+    }
+
+    if (type === "cosmicVFX") {
+      fields.push(`
+    # Glitch
+    cosmic_enable_glitch: bool = Field(
+        default=${config.enableGlitch === true},
+        description="Enable glitch effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Glitch"),
+    )
+    cosmic_glitch_shader: str = Field(
+        default="${config.glitchShader ?? 'basic'}",
+        description="Glitch shader type",
+        json_schema_extra=ui_field_config(order=${order++}, label="Glitch Shader"),
+    )
+    cosmic_glitch_intensity: float = Field(
+        default=${config.glitchIntensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Glitch intensity",
+        json_schema_extra=ui_field_config(order=${order++}, label="Glitch Intensity"),
+    )
+    # Retro
+    cosmic_enable_retro: bool = Field(
+        default=${config.enableRetro === true},
+        description="Enable retro effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Retro"),
+    )
+    cosmic_retro_shader: str = Field(
+        default="${config.retroShader ?? 'vhs'}",
+        description="Retro shader type",
+        json_schema_extra=ui_field_config(order=${order++}, label="Retro Shader"),
+    )
+    cosmic_retro_intensity: float = Field(
+        default=${config.retroIntensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Retro intensity",
+        json_schema_extra=ui_field_config(order=${order++}, label="Retro Intensity"),
+    )
+    # Distortion
+    cosmic_enable_distortion: bool = Field(
+        default=${config.enableDistortion === true},
+        description="Enable distortion effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Distortion"),
+    )
+    cosmic_distortion_shader: str = Field(
+        default="${config.distortionShader ?? 'wave'}",
+        description="Distortion shader type",
+        json_schema_extra=ui_field_config(order=${order++}, label="Distortion Shader"),
+    )
+    cosmic_distortion_intensity: float = Field(
+        default=${config.distortionIntensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Distortion intensity",
+        json_schema_extra=ui_field_config(order=${order++}, label="Distortion Intensity"),
+    )
+    # Color
+    cosmic_enable_color: bool = Field(
+        default=${config.enableColor === true},
+        description="Enable color effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Color"),
+    )
+    cosmic_color_shader: str = Field(
+        default="${config.colorShader ?? 'hueshift'}",
+        description="Color shader type",
+        json_schema_extra=ui_field_config(order=${order++}, label="Color Shader"),
+    )
+    cosmic_color_intensity: float = Field(
+        default=${config.colorIntensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Color intensity",
+        json_schema_extra=ui_field_config(order=${order++}, label="Color Intensity"),
+    )
+    # Edge
+    cosmic_enable_edge: bool = Field(
+        default=${config.enableEdge === true},
+        description="Enable edge detection",
+        json_schema_extra=ui_field_config(order=${order++}, label="Edge"),
+    )
+    cosmic_edge_shader: str = Field(
+        default="${config.edgeShader ?? 'sobel'}",
+        description="Edge detection type",
+        json_schema_extra=ui_field_config(order=${order++}, label="Edge Shader"),
+    )
+    cosmic_edge_intensity: float = Field(
+        default=${config.edgeIntensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Edge intensity",
+        json_schema_extra=ui_field_config(order=${order++}, label="Edge Intensity"),
+    )
+    # Blur
+    cosmic_enable_blur: bool = Field(
+        default=${config.enableBlur === true},
+        description="Enable blur effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Blur"),
+    )
+    cosmic_blur_shader: str = Field(
+        default="${config.blurShader ?? 'gaussian'}",
+        description="Blur shader type",
+        json_schema_extra=ui_field_config(order=${order++}, label="Blur Shader"),
+    )
+    cosmic_blur_intensity: float = Field(
+        default=${config.blurIntensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Blur intensity",
+        json_schema_extra=ui_field_config(order=${order++}, label="Blur Intensity"),
+    )
+    # Global
+    cosmic_intensity: float = Field(
+        default=${config.intensity ?? 1.0},
+        ge=0,
+        le=2,
+        description="Master intensity multiplier",
+        json_schema_extra=ui_field_config(order=${order++}, label="Intensity"),
+    )
+    cosmic_speed: float = Field(
+        default=${config.speed ?? 1.0},
+        ge=0,
+        le=3,
+        description="Animation speed",
+        json_schema_extra=ui_field_config(order=${order++}, label="Speed"),
+    )
+    cosmic_hue_shift: float = Field(
+        default=${config.hueShift ?? 0.0},
+        ge=-1,
+        le=1,
+        description="Rotate color wheel",
+        json_schema_extra=ui_field_config(order=${order++}, label="Hue Shift"),
+    )
+    cosmic_saturation: float = Field(
+        default=${config.saturation ?? 1.0},
+        ge=0,
+        le=2,
+        description="Color richness",
+        json_schema_extra=ui_field_config(order=${order++}, label="Saturation"),
+    )
+    cosmic_brightness: float = Field(
+        default=${config.brightness ?? 1.0},
+        ge=0,
+        le=2,
+        description="Final brightness",
+        json_schema_extra=ui_field_config(order=${order++}, label="Brightness"),
+    )
+    cosmic_blend_mode: str = Field(
+        default="${config.blendMode ?? 'normal'}",
+        description="Blend mode with original",
+        json_schema_extra=ui_field_config(order=${order++}, label="Blend Mode"),
+    )`);
+    }
+
+    if (type === "vfxPack") {
+      fields.push(`
+    vfx_chromatic_enabled: bool = Field(
+        default=${config.chromaticEnabled !== false},
+        description="Enable chromatic aberration",
+        json_schema_extra=ui_field_config(order=${order++}, label="Chromatic Aberration"),
+    )
+    vfx_chromatic_intensity: float = Field(
+        default=${config.chromaticIntensity ?? 0.3},
+        ge=0,
+        le=1,
+        description="RGB channel displacement strength",
+        json_schema_extra=ui_field_config(order=${order++}, label="Chromatic Intensity"),
+    )
+    vfx_chromatic_angle: float = Field(
+        default=${config.chromaticAngle ?? 0.0},
+        ge=0,
+        le=360,
+        description="Displacement direction (degrees)",
+        json_schema_extra=ui_field_config(order=${order++}, label="Chromatic Angle"),
+    )
+    vfx_vhs_enabled: bool = Field(
+        default=${config.vhsEnabled === true},
+        description="Enable VHS / retro CRT effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="VHS / Retro CRT"),
+    )
+    vfx_scan_line_intensity: float = Field(
+        default=${config.scanLineIntensity ?? 0.3},
+        ge=0,
+        le=1,
+        description="Scan line darkness",
+        json_schema_extra=ui_field_config(order=${order++}, label="Scan Lines"),
+    )
+    vfx_scan_line_count: int = Field(
+        default=${config.scanLineCount ?? 100},
+        ge=10,
+        le=500,
+        description="Number of scan lines",
+        json_schema_extra=ui_field_config(order=${order++}, label="Line Count"),
+    )
+    vfx_noise: float = Field(
+        default=${config.vhsNoise ?? 0.1},
+        ge=0,
+        le=1,
+        description="Analog noise/grain amount",
+        json_schema_extra=ui_field_config(order=${order++}, label="Noise"),
+    )
+    vfx_tracking: float = Field(
+        default=${config.trackingDistortion ?? 0.2},
+        ge=0,
+        le=1,
+        description="Horizontal tracking distortion",
+        json_schema_extra=ui_field_config(order=${order++}, label="Tracking"),
+    )
+    vfx_halftone_enabled: bool = Field(
+        default=${config.halftoneEnabled === true},
+        description="Enable halftone effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Halftone"),
+    )
+    vfx_halftone_dot_size: int = Field(
+        default=${config.halftoneDotSize ?? 8},
+        ge=4,
+        le=20,
+        description="Halftone dot size (pixels)",
+        json_schema_extra=ui_field_config(order=${order++}, label="Dot Size"),
+    )
+    vfx_halftone_sharpness: float = Field(
+        default=${config.halftoneSharpness ?? 0.7},
+        ge=0,
+        le=1,
+        description="Edge sharpness of dots",
+        json_schema_extra=ui_field_config(order=${order++}, label="Sharpness"),
     )`);
     }
 
@@ -250,13 +1177,170 @@ function generateSchemaFields(nodes: any[]): string {
         json_schema_extra=ui_field_config(order=${order++}, label="Strength"),
     )`);
     }
+
+    if (type === "chromatic") {
+      fields.push(`
+    chromatic_enabled: bool = Field(
+        default=${config.enabled !== false},
+        description="Enable chromatic aberration",
+        json_schema_extra=ui_field_config(order=${order++}, label="Chromatic Aberration"),
+    )
+    chromatic_intensity: float = Field(
+        default=${config.intensity ?? 0.3},
+        ge=0,
+        le=1,
+        description="RGB channel displacement strength",
+        json_schema_extra=ui_field_config(order=${order++}, label="Intensity"),
+    )
+    chromatic_angle: float = Field(
+        default=${config.angle ?? 0},
+        ge=0,
+        le=360,
+        description="Displacement direction in degrees",
+        json_schema_extra=ui_field_config(order=${order++}, label="Angle"),
+    )`);
+    }
+
+    if (type === "vhs") {
+      fields.push(`
+    vhs_enabled: bool = Field(
+        default=${config.enabled === true},
+        description="Enable VHS / retro CRT effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="VHS / Retro CRT"),
+    )
+    scan_line_intensity: float = Field(
+        default=${config.scanLineIntensity ?? 0.3},
+        ge=0,
+        le=1,
+        description="Darkness of scan lines",
+        json_schema_extra=ui_field_config(order=${order++}, label="Scan Lines"),
+    )
+    scan_line_count: int = Field(
+        default=${config.scanLineCount ?? 100},
+        ge=10,
+        le=500,
+        description="Number of scan lines",
+        json_schema_extra=ui_field_config(order=${order++}, label="Line Count"),
+    )
+    vhs_noise: float = Field(
+        default=${config.noise ?? 0.1},
+        ge=0,
+        le=1,
+        description="Analog grain amount",
+        json_schema_extra=ui_field_config(order=${order++}, label="Noise"),
+    )
+    tracking_distortion: float = Field(
+        default=${config.tracking ?? 0.2},
+        ge=0,
+        le=1,
+        description="Horizontal tracking distortion",
+        json_schema_extra=ui_field_config(order=${order++}, label="Tracking"),
+    )`);
+    }
+
+    if (type === "halftone") {
+      fields.push(`
+    halftone_enabled: bool = Field(
+        default=${config.enabled === true},
+        description="Enable halftone effect",
+        json_schema_extra=ui_field_config(order=${order++}, label="Halftone"),
+    )
+    halftone_dot_size: int = Field(
+        default=${config.dotSize ?? 8},
+        ge=4,
+        le=20,
+        description="Halftone dot size in pixels",
+        json_schema_extra=ui_field_config(order=${order++}, label="Dot Size"),
+    )
+    halftone_sharpness: float = Field(
+        default=${config.sharpness ?? 0.7},
+        ge=0,
+        le=1,
+        description="Edge sharpness of dots",
+        json_schema_extra=ui_field_config(order=${order++}, label="Sharpness"),
+    )`);
+    }
+
+    // Custom effect node - user-defined parameters and code
+    if (type === "custom") {
+      const customConfig = config;
+      const params = (customConfig && customConfig.params as Array<{name: string, type: string, default: any, min?: number, max?: number, description?: string}>) || [];
+      
+      for (const param of params) {
+        const paramName = param.name.replace(/[^a-zA-Z0-9_]/g, '_');
+        const defaultVal = param.default ?? 0;
+        
+        if (param.type === "float" || param.type === "number") {
+          fields.push(`
+    ${paramName}: float = Field(
+        default=${defaultVal},
+        ${param.min !== undefined ? `ge=${param.min},` : ''}
+        ${param.max !== undefined ? `le=${param.max},` : ''}
+        description="${param.description || param.name}",
+        json_schema_extra=ui_field_config(order=${order++}, label="${param.name}"),
+    )`);
+        } else if (param.type === "int" || param.type === "integer") {
+          fields.push(`
+    ${paramName}: int = Field(
+        default=${defaultVal},
+        ${param.min !== undefined ? `ge=${param.min},` : ''}
+        ${param.max !== undefined ? `le=${param.max},` : ''}
+        description="${param.description || param.name}",
+        json_schema_extra=ui_field_config(order=${order++}, label="${param.name}"),
+    )`);
+        } else if (param.type === "bool" || param.type === "boolean") {
+          fields.push(`
+    ${paramName}: bool = Field(
+        default=${defaultVal === true},
+        description="${param.description || param.name}",
+        json_schema_extra=ui_field_config(order=${order++}, label="${param.name}"),
+    )`);
+        } else {
+          fields.push(`
+    ${paramName}: str = Field(
+        default="${defaultVal}",
+        description="${param.description || param.name}",
+        json_schema_extra=ui_field_config(order=${order++}, label="${param.name}"),
+    )`);
+        }
+      }
+    }
   }
 
   return fields.join(",");
 }
 
-function generatePipelineInit(nodes: any[]): string {
-  const processingNodes = nodes.filter((n) => EFFECT_NODES.includes(n.data.type));
+function getNodeOrder(nodes: any[], edges: any[]): any[] {
+  const outputNode = nodes.find(n => n.data.type === "pipelineOutput");
+  
+  if (!outputNode) return nodes.filter(n => EFFECT_NODES.includes(n.data.type));
+  
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+  const order: any[] = [];
+  const visited = new Set<string>();
+  
+  function visit(nodeId: string) {
+    if (visited.has(nodeId)) return;
+    visited.add(nodeId);
+    
+    const incoming = edges.filter(e => e.target === nodeId);
+    for (const edge of incoming) {
+      visit(edge.source);
+    }
+    
+    const node = nodeMap.get(nodeId);
+    if (node && EFFECT_NODES.includes(node.data.type)) {
+      order.push(node);
+    }
+  }
+  
+  visit(outputNode.id);
+  
+  return order;
+}
+
+function generatePipelineInit(nodes: any[], edges: any[]): string {
+  const processingNodes = getNodeOrder(nodes, edges);
 
   if (processingNodes.length === 0) {
     return `    # No processing nodes - pass-through
@@ -316,6 +1400,25 @@ function generatePipelineInit(nodes: any[]): string {
     video = _apply_kaleido(video, slices=kaleido_slices, rotation=kaleido_rotation, zoom=kaleido_zoom)`);
     }
 
+    if (type === "kaleidoscope") {
+      lines.push(`    # Full kaleidoscope effect
+    if kwargs.get("kaleidoscope_enabled", ${config.enabled !== false}):
+        frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        frames = _apply_kaleidoscope(
+            frames,
+            enabled=True,
+            mix=kwargs.get("kaleidoscope_mix", ${config.mix ?? 1.0}),
+            mirror_mode=kwargs.get("kaleidoscope_mirror_mode", "${config.mirrorMode ?? 'none'}"),
+            rotational_enabled=kwargs.get("kaleidoscope_rotational_enabled", ${config.rotationalEnabled !== false}),
+            rotational_slices=kwargs.get("kaleidoscope_slices", ${config.rotationalSlices ?? 6}),
+            rotation_deg=kwargs.get("kaleidoscope_rotation", ${config.rotationDeg ?? 0.0}),
+            zoom=kwargs.get("kaleidoscope_zoom", ${config.zoom ?? 1.0}),
+            warp=kwargs.get("kaleidoscope_warp", ${config.warp ?? 0.0}),
+        )
+        video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
     if (type === "vignette") {
       lines.push(`    # Vignette effect
     intensity = float(kwargs.get("vignette_intensity", ${config.intensity ?? 0.5}))
@@ -337,6 +1440,89 @@ function generatePipelineInit(nodes: any[]): string {
       lines.push(`    # Segmentation / Mask generation
     target_class = kwargs.get("target_class", "${config.targetClass ?? config.target_class ?? 'person'}")
     confidence_threshold = float(kwargs.get("confidence_threshold", ${config.confidence ?? 0.5}))`);
+    }
+
+    if (type === "yoloMask") {
+      lines.push(`    # YOLO26 segmentation
+    yolo_model_size = kwargs.get("yolo_model_size", "${config.modelSize ?? 'nano'}")
+    yolo_output_mode = kwargs.get("yolo_output_mode", "${config.outputMode ?? 'mask'}")
+    yolo_target_class = kwargs.get("yolo_target_class", "${config.targetClass ?? 'person'}")
+    yolo_confidence = float(kwargs.get("yolo_confidence", ${config.confidenceThreshold ?? 0.5}))
+    yolo_invert_mask = kwargs.get("yolo_invert_mask", ${config.invertMask === true})
+    # YOLO segmentation requires model loading - placeholder for actual implementation
+    # In real Scope plugins, this would use the YOLO model to generate masks
+    `);
+    }
+
+    if (type === "bloom") {
+      lines.push(`    # Bloom effect
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    frames = _apply_bloom(
+        frames,
+        threshold=kwargs.get("bloom_threshold", ${config.threshold ?? 0.8}),
+        soft_knee=kwargs.get("bloom_soft_knee", ${config.softKnee ?? 0.5}),
+        intensity=kwargs.get("bloom_intensity", ${config.intensity ?? 1.0}),
+        radius=kwargs.get("bloom_radius", ${config.radius ?? 8}),
+        downsample=kwargs.get("bloom_downsample", ${config.downsample ?? 1}),
+        debug=kwargs.get("bloom_debug", ${config.debug === true}),
+    )
+    video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
+    if (type === "cosmicVFX") {
+      lines.push(`    # Cosmic VFX effect
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    frames = _apply_cosmic_vfx(
+        frames,
+        enable_glitch=kwargs.get("cosmic_enable_glitch", ${config.enableGlitch === true}),
+        glitch_shader=kwargs.get("cosmic_glitch_shader", "${config.glitchShader ?? 'basic'}"),
+        glitch_intensity=kwargs.get("cosmic_glitch_intensity", ${config.glitchIntensity ?? 1.0}),
+        enable_retro=kwargs.get("cosmic_enable_retro", ${config.enableRetro === true}),
+        retro_shader=kwargs.get("cosmic_retro_shader", "${config.retroShader ?? 'vhs'}"),
+        retro_intensity=kwargs.get("cosmic_retro_intensity", ${config.retroIntensity ?? 1.0}),
+        enable_distortion=kwargs.get("cosmic_enable_distortion", ${config.enableDistortion === true}),
+        distortion_shader=kwargs.get("cosmic_distortion_shader", "${config.distortionShader ?? 'wave'}"),
+        distortion_intensity=kwargs.get("cosmic_distortion_intensity", ${config.distortionIntensity ?? 1.0}),
+        enable_color=kwargs.get("cosmic_enable_color", ${config.enableColor === true}),
+        color_shader=kwargs.get("cosmic_color_shader", "${config.colorShader ?? 'hueshift'}"),
+        color_intensity=kwargs.get("cosmic_color_intensity", ${config.colorIntensity ?? 1.0}),
+        enable_edge=kwargs.get("cosmic_enable_edge", ${config.enableEdge === true}),
+        edge_shader=kwargs.get("cosmic_edge_shader", "${config.edgeShader ?? 'sobel'}"),
+        edge_intensity=kwargs.get("cosmic_edge_intensity", ${config.edgeIntensity ?? 1.0}),
+        enable_blur=kwargs.get("cosmic_enable_blur", ${config.enableBlur === true}),
+        blur_shader=kwargs.get("cosmic_blur_shader", "${config.blurShader ?? 'gaussian'}"),
+        blur_intensity=kwargs.get("cosmic_blur_intensity", ${config.blurIntensity ?? 1.0}),
+        intensity=kwargs.get("cosmic_intensity", ${config.intensity ?? 1.0}),
+        speed=kwargs.get("cosmic_speed", ${config.speed ?? 1.0}),
+        hue_shift=kwargs.get("cosmic_hue_shift", ${config.hueShift ?? 0.0}),
+        saturation=kwargs.get("cosmic_saturation", ${config.saturation ?? 1.0}),
+        brightness=kwargs.get("cosmic_brightness", ${config.brightness ?? 1.0}),
+        blend_mode=kwargs.get("cosmic_blend_mode", "${config.blendMode ?? 'normal'}"),
+    )
+    video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
+    if (type === "vfxPack") {
+      lines.push(`    # VFX Pack effect
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    frames = _apply_vfx_pack(
+        frames,
+        chromatic_enabled=kwargs.get("vfx_chromatic_enabled", ${config.chromaticEnabled !== false}),
+        chromatic_intensity=kwargs.get("vfx_chromatic_intensity", ${config.chromaticIntensity ?? 0.3}),
+        chromatic_angle=kwargs.get("vfx_chromatic_angle", ${config.chromaticAngle ?? 0.0}),
+        vhs_enabled=kwargs.get("vfx_vhs_enabled", ${config.vhsEnabled === true}),
+        scan_line_intensity=kwargs.get("vfx_scan_line_intensity", ${config.scanLineIntensity ?? 0.3}),
+        scan_line_count=kwargs.get("vfx_scan_line_count", ${config.scanLineCount ?? 100}),
+        vhs_noise=kwargs.get("vfx_noise", ${config.vhsNoise ?? 0.1}),
+        tracking_distortion=kwargs.get("vfx_tracking", ${config.trackingDistortion ?? 0.2}),
+        halftone_enabled=kwargs.get("vfx_halftone_enabled", ${config.halftoneEnabled === true}),
+        halftone_dot_size=kwargs.get("vfx_halftone_dot_size", ${config.halftoneDotSize ?? 8}),
+        halftone_sharpness=kwargs.get("vfx_halftone_sharpness", ${config.halftoneSharpness ?? 0.7}),
+    )
+    video = [frames[i] for i in range(frames.shape[0])]`);
     }
 
     if (type === "depthEstimation") {
@@ -380,6 +1566,60 @@ function generatePipelineInit(nodes: any[]): string {
     style_type = kwargs.get("style_type", "${config.style ?? 'anime'}")
     strength = float(kwargs.get("style_strength", ${config.strength ?? 0.7}))`);
     }
+
+    if (type === "chromatic") {
+      lines.push(`    # Chromatic aberration
+    if kwargs.get("chromatic_enabled", ${config.enabled !== false}):
+        frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        frames = _apply_chromatic(
+            frames,
+            intensity=kwargs.get("chromatic_intensity", ${config.intensity ?? 0.3}),
+            angle=kwargs.get("chromatic_angle", ${config.angle ?? 0}),
+        )
+        video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
+    if (type === "vhs") {
+      lines.push(`    # VHS / retro CRT
+    if kwargs.get("vhs_enabled", ${config.enabled === true}):
+        frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        frames = _apply_vhs(
+            frames,
+            scan_line_intensity=kwargs.get("scan_line_intensity", ${config.scanLineIntensity ?? 0.3}),
+            scan_line_count=kwargs.get("scan_line_count", ${config.scanLineCount ?? 100}),
+            noise=kwargs.get("vhs_noise", ${config.noise ?? 0.1}),
+            tracking=kwargs.get("tracking_distortion", ${config.tracking ?? 0.2}),
+        )
+        video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
+    if (type === "halftone") {
+      lines.push(`    # Halftone effect
+    if kwargs.get("halftone_enabled", ${config.enabled === true}):
+        frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        frames = _apply_halftone(
+            frames,
+            dot_size=kwargs.get("halftone_dot_size", ${config.dotSize ?? 8}),
+            sharpness=kwargs.get("halftone_sharpness", ${config.sharpness ?? 0.7}),
+        )
+        video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
+    // Custom effect - user's own code
+    if (type === "custom") {
+      const customCode = (config.code as string) || "# Custom effect code\nreturn frames";
+      const effectName = ((config.name as string) || "custom").replace(/[^a-zA-Z0-9]/g, "_");
+      
+      lines.push(`    # Custom effect: ${effectName}
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    # User-defined processing
+${customCode.split('\n').map(line => '    ' + line).join('\n')}
+    video = [frames[i] for i in range(frames.shape[0])]`);
+    }
   }
 
   return lines.join("\n\n");
@@ -389,15 +1629,28 @@ export function generatePlugin(nodes: any[], edges: any[]): string {
   const configNode = nodes.find((n) => n.data.type === "pluginConfig");
   
   const pluginId = (configNode?.data?.config?.pipelineId as string) || "my_plugin";
-  const pluginName = (configNode?.data?.config?.pipelineName as string) || toTitleCase(pluginId);
-  const pluginDescription = (configNode?.data?.config?.pipelineDescription as string) || "Generated by OpenScope";
+  const pluginName = (configNode?.data?.config?.pluginName as string) || toTitleCase(pluginId);
+  const pluginDescription = (configNode?.data?.config?.pluginDescription as string) || "Generated by OpenScope";
   const usage = (configNode?.data?.config?.usage as string) || "main";
   const mode = (configNode?.data?.config?.mode as string) || "video";
   const supportsPrompts = configNode?.data?.config?.supportsPrompts !== false;
 
-  const schemaFields = generateSchemaFields(nodes);
-  const pipelineInit = generatePipelineInit(nodes);
+  const schemaFields = generateSchemaFields(nodes, edges);
+  const pipelineInit = generatePipelineInit(nodes, edges);
   
+  const processingNodes = nodes.filter((n) => EFFECT_NODES.includes(n.data.type));
+  const needsKaleido = processingNodes.some(n => n.data.type === "kaleido");
+  const needsKaleidoscope = processingNodes.some(n => n.data.type === "kaleidoscope");
+  const needsYoloMask = processingNodes.some(n => n.data.type === "yoloMask");
+  const needsVignette = processingNodes.some(n => n.data.type === "vignette");
+  const needsColorGrading = processingNodes.some(n => n.data.type === "colorGrading");
+  const needsChromatic = processingNodes.some(n => n.data.type === "chromatic");
+  const needsVHS = processingNodes.some(n => n.data.type === "vhs");
+  const needsHalftone = processingNodes.some(n => n.data.type === "halftone");
+  const needsBloom = processingNodes.some(n => n.data.type === "bloom");
+  const needsCosmicVFX = processingNodes.some(n => n.data.type === "cosmicVFX");
+  const needsVfxPack = processingNodes.some(n => n.data.type === "vfxPack");
+
   let modesConfig = "";
   if (mode === "video") {
     modesConfig = `    modes = {"video": ModeDefaults(default=True)}`;
@@ -423,6 +1676,38 @@ export function generatePlugin(nodes: any[], edges: any[]): string {
   } else {
     usageType = "[]";
     usageComment = "Main generative pipeline";
+  }
+
+  const helpers: string[] = [];
+  if (needsKaleido) {
+    helpers.push(KALEIDO_HELPER);
+  }
+  if (needsKaleidoscope) {
+    helpers.push(KALEIDOSCOPE_HELPER);
+  }
+  if (needsVignette) {
+    helpers.push(VIGNETTE_HELPER);
+  }
+  if (needsColorGrading) {
+    helpers.push(COLOR_GRADING_HELPER);
+  }
+  if (needsChromatic) {
+    helpers.push(CHROMATIC_HELPER);
+  }
+  if (needsVHS) {
+    helpers.push(VHS_HELPER);
+  }
+  if (needsHalftone) {
+    helpers.push(HALFTONE_HELPER);
+  }
+  if (needsBloom) {
+    helpers.push(BLOOM_HELPER);
+  }
+  if (needsCosmicVFX) {
+    helpers.push(COSMIC_VFX_HELPER);
+  }
+  if (needsVfxPack) {
+    helpers.push(VFX_PACK_HELPER);
   }
 
   return `"""${pluginId} - Generated by OpenScope"""
@@ -486,81 +1771,11 @@ ${pipelineInit}
         return {"video": out.clamp(0, 1)}
 
 
-def _apply_kaleido(video, slices=6, rotation=0, zoom=1.0):
-    import math
-    import torch.nn.functional as F
-    
-    H = video[0].shape[1]
-    W = video[0].shape[2]
-    device = video[0].device
-    
-    grid_y = torch.linspace(-1, 1, H, device=device)
-    grid_x = torch.linspace(-1, 1, W, device=device)
-    gy, gx = torch.meshgrid(grid_y, grid_x, indexing='ij')
-    
-    if zoom != 1.0:
-        gx = gx / zoom
-        gy = gy / zoom
-    
-    if slices >= 2:
-        r = torch.sqrt(gx * gx + gy * gy + 1e-8)
-        theta = torch.atan2(gy, gx)
-        theta = theta + math.radians(rotation)
-        wedge = 2 * math.pi / slices
-        phi = torch.remainder(theta, wedge)
-        phi = torch.minimum(phi, wedge - phi)
-        gx = r * torch.cos(phi)
-        gy = r * torch.sin(phi)
-    
-    gx = gx.clamp(-1, 1)
-    gy = gy.clamp(-1, 1)
-    grid = torch.stack((gx, gy), dim=-1).unsqueeze(0)
-    
-    result = []
-    for frame in video:
-        frame = frame.float() / 255.0 if frame.max() > 1 else frame.float()
-        nchw = frame.permute(0, 3, 1, 2)
-        sampled = F.grid_sample(nchw, grid, mode='bilinear', padding_mode='border', align_corners=True)
-        out = sampled.permute(0, 2, 3, 1)
-        result.append(out)
-    return result
+${helpers.join("\n\n")}
 
-
-def _apply_vignette(video, intensity=0.5, smoothness=0.5):
-    result = []
-    for frame in video:
-        H, W = frame.shape[1], frame.shape[2]
-        grid_y = torch.linspace(-1, 1, H, device=frame.device)
-        grid_x = torch.linspace(-1, 1, W, device=frame.device)
-        gy, gx = torch.meshgrid(grid_y, grid_x, indexing='ij')
-        dist = torch.sqrt(gx * gx + gy * gy)
-        vignette = torch.clamp((dist - 0.3) / (1 - smoothness + 0.01), 0, 1)
-        vignette = 1 - vignette * intensity
-        frame = frame * vignette.view(1, H, W, 1)
-        result.append(frame)
-    return result
-
-
-def _apply_color_grading(video, temperature=0, tint=0, saturation=1, contrast=1):
-    result = []
-    for frame in video:
-        if temperature != 0:
-            if temperature > 0:
-                frame[..., 0] = frame[..., 0] * (1 + temperature * 0.1)
-                frame[..., 2] = frame[..., 2] * (1 - temperature * 0.1)
-            else:
-                frame[..., 0] = frame[..., 0] * (1 + temperature * 0.1)
-                frame[..., 2] = frame[..., 2] * (1 - temperature * 0.1)
-        if tint != 0:
-            frame[..., 1] = frame[..., 1] * (1 - tint * 0.1)
-        if saturation != 1:
-            gray = frame.mean(dim=-1, keepdim=True)
-            frame = gray + (frame - gray) * saturation
-        if contrast != 1:
-            mean = frame.mean()
-            frame = mean + (frame - mean) * contrast
-        result.append(torch.clamp(frame, 0, 1))
-    return result
+def register_pipelines(register):
+    """Hook to register this pipeline with Scope."""
+    register(${toPascalCase(pluginId)}Pipeline)
 `;
 }
 
@@ -571,6 +1786,7 @@ export function generatePluginFiles(nodes: any[], edges: any[]): Record<string, 
   
   const pluginCode = generatePlugin(nodes, edges);
   const srcDir = pascalName.replace(/([A-Z])/g, "-$1").toLowerCase().replace(/^-/, '');
+  const srcPath = srcDir.replace(/-/g, "_");
   
   return {
     "pyproject.toml": `[project]
@@ -578,16 +1794,19 @@ name = "${pluginId}"
 version = "0.1.0"
 description = "Generated by OpenScope"
 requires-python = ">=3.11"
+dependencies = [
+    "scope",
+]
 
 [project.entry-points."scope"]
-${pluginId.replace(/-/g, "_")} = "${pascalName}"
+${pluginId.replace(/-/g, "_")} = "src.${srcPath}"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/${srcDir}"]
+packages = ["src/${srcPath}"]
 `,
     [`src/${srcDir}/__init__.py`]: `"""${pascalName} Plugin - Generated by OpenScope."""
 

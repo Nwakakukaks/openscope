@@ -25,6 +25,14 @@ class ChatRequest(BaseModel):
     node_graph: Optional[dict] = None
 
 
+class GenerateProcessorRequest(BaseModel):
+    """Request for generating a processor."""
+
+    kind: str  # "preprocessor" or "postprocessor"
+    description: str
+    existing_code: Optional[str] = None
+
+
 class NodeSuggestion(BaseModel):
     """Suggested node."""
 
@@ -70,6 +78,36 @@ When suggesting nodes:
 For effects like kaleido, mirror, blur - these are typically postprocessors.
 For segmentation like mask - this is typically a preprocessor.
 For generation/transform - this is typically a main pipeline."""
+
+# System prompt for generating processors
+PROCESSOR_GENERATOR_PROMPT = """You are an expert Python developer for Daydream Scope video processing pipelines.
+
+Generate Python code for a video {kind} based on the user's description.
+
+The code should:
+1. Accept a 'frames' parameter - a torch tensor of shape (T, H, W, C) with values in [0, 1] range
+2. Accept any relevant configuration parameters
+3. Process the frames and return the result as a torch tensor
+
+IMPORTANT: 
+- Only output the Python code, no explanations
+- Use PyTorch for tensor operations
+- Keep the code simple and functional
+- Include error handling
+- The function should be named 'process_frames'
+
+Example structure:
+```python
+def process_frames(frames, param1=1.0, param2=0.5):
+    # Your processing code here
+    # frames shape: (T, H, W, C)
+    result = frames  # modify this
+    return result
+```
+
+Now generate the processor code for: {description}
+
+Only output the Python code block, nothing else."""
 
 
 async def call_groq(messages: list, settings) -> str:
@@ -214,4 +252,55 @@ async def ai_status(settings=get_settings):
         "available": bool(settings.groq_api_key),
         "provider": "groq",
         "model": "llama-3.1-8b-instant",
+    }
+
+
+@router.post("/generate-processor")
+async def generate_processor(request: GenerateProcessorRequest, settings=get_settings):
+    """Generate a custom processor using AI."""
+    description = request.description
+    kind = request.kind
+
+    if not description:
+        raise HTTPException(status_code=400, detail="Description is required")
+
+    if kind not in ["preprocessor", "postprocessor"]:
+        raise HTTPException(
+            status_code=400, detail="Kind must be 'preprocessor' or 'postprocessor'"
+        )
+
+    # Build the prompt
+    prompt = PROCESSOR_GENERATOR_PROMPT.format(kind=kind, description=description)
+
+    messages = [
+        {"role": "system", "content": prompt},
+    ]
+
+    # If there's existing code, ask for modification
+    if request.existing_code:
+        messages.append(
+            {
+                "role": "user",
+                "content": f"Here's the current code:\n```python\n{request.existing_code}\n```\n\nPlease modify it according to: {description}\n\nOnly output the modified Python code block.",
+            }
+        )
+
+    response = await call_groq(messages, settings)
+
+    # Extract code from response
+    code = response
+    if "```python" in response:
+        start = response.find("```python") + len("```python")
+        end = response.find("```", start)
+        if end > start:
+            code = response[start:end].strip()
+    elif "```" in response:
+        start = response.find("```") + 3
+        end = response.find("```", start)
+        if end > start:
+            code = response[start:end].strip()
+
+    return {
+        "code": code,
+        "disclaimer": "This is AI-generated code (Beta). Please review and test before using in production.",
     }

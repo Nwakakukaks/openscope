@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     github_token: Optional[str] = None
     github_owner: Optional[str] = None
 
-    # Scope API
-    scope_api_url: str = "http://localhost:8000"
+    # Scope API - must be set in .env
+    scope_api_url: str = ""
 
     # Cloud (for remote inference)
     scope_cloud_app_id: Optional[str] = None

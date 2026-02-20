@@ -29,6 +29,7 @@ import {
   Loader2,
   Zap,
   AlertCircle,
+  Tv,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 
@@ -36,7 +37,15 @@ interface NodeCategory {
   name: string;
   icon: React.ReactNode;
   color: string;
-  nodes: { type: string; label: string; icon: React.ReactNode; description: string; pipelineId?: string; enabled?: boolean }[];
+  nodes: {
+    type: string;
+    label: string;
+    icon: React.ReactNode;
+    description: string;
+    pipelineId?: string;
+    enabled?: boolean;
+    createNewKind?: "preprocessor" | "postprocessor";
+  }[];
   isLoading?: boolean;
 }
 
@@ -66,15 +75,14 @@ export default function NodePalette() {
     if (usage === "all") return true;
     switch (categoryName) {
       case "Plugin Config":
+      case "Settings":
       case "Input":
       case "Pipeline":
       case "Output":
       case "Guides":
+      case "Pre-processor":
+      case "Post-processor":
         return true;
-      case "Preprocessor":
-        return usage === "preprocessor" || usage === "all";
-      case "Postprocessor":
-        return usage === "postprocessor" || usage === "all";
       case "Effects":
         return usage === "postprocessor" || usage === "all";
       default:
@@ -94,7 +102,7 @@ export default function NodePalette() {
     setPipelinesLoading(true);
     setPipelinesError(null);
     try {
-      const response = await fetch("/api/scope/pipelines/list?scope_url=http://localhost:8000");
+      const response = await fetch("/api/scope/pipelines/list");
       if (!response.ok) {
         throw new Error("Failed to fetch pipelines");
       }
@@ -112,10 +120,18 @@ export default function NodePalette() {
     fetchPipelines();
   }, []);
 
-  const handleDragStart = (e: React.DragEvent, nodeType: string, pipelineId?: string) => {
+  const handleDragStart = (
+    e: React.DragEvent,
+    nodeType: string,
+    pipelineId?: string,
+    createNewKind?: "preprocessor" | "postprocessor"
+  ) => {
     e.dataTransfer.setData("nodeType", nodeType);
     if (pipelineId) {
       e.dataTransfer.setData("pipelineId", pipelineId);
+    }
+    if (createNewKind) {
+      e.dataTransfer.setData("createNewKind", createNewKind);
     }
     e.dataTransfer.effectAllowed = "move";
   };
@@ -139,8 +155,25 @@ export default function NodePalette() {
   const getOutputNodes = () => {
     return [
       { type: "pipelineOutput", label: "Main Pipeline", icon: <Zap className="w-4 h-4" />, description: "Main output", enabled: usage === "main" || usage === "all" },
-      { type: "preprocessorOutput", label: "Preprocessor", icon: <Layers className="w-4 h-4" />, description: "Pre-process", enabled: usage === "preprocessor" || usage === "all" },
-      { type: "postprocessorOutput", label: "Postprocessor", icon: <Play className="w-4 h-4" />, description: "Post-process", enabled: usage === "postprocessor" || usage === "all" },
+      // { type: "preprocessorOutput", label: "Preprocessor", icon: <Layers className="w-4 h-4" />, description: "Pre-process", enabled: usage === "preprocessor" || usage === "all" },
+      // { type: "postprocessorOutput", label: "Postprocessor", icon: <Play className="w-4 h-4" />, description: "Post-process", enabled: usage === "postprocessor" || usage === "all" },
+    ];
+  };
+
+  const getPreprocessorNodes = () => {
+    return [
+      { type: "customPreprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "preprocessor" },
+      { type: "kaleidoscope", label: "Kaleidoscope", icon: <Hexagon className="w-4 h-4" />, description: "GPU kaleidoscope/mirror effect", enabled: true },
+      { type: "yoloMask", label: "YOLO Mask", icon: <Scan className="w-4 h-4" />, description: "YOLO26 segmentation for VACE masks", enabled: true },
+    ];
+  };
+
+  const getPostprocessorNodes = () => {
+    return [
+      { type: "customPostprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "postprocessor" },
+      { type: "bloom", label: "Bloom", icon: <SunMedium className="w-4 h-4" />, description: "Bloom/glow effect", enabled: true },
+      { type: "cosmicVFX", label: "Cosmic VFX", icon: <Sparkles className="w-4 h-4" />, description: "30+ visual effects", enabled: true },
+      { type: "vfxPack", label: "VFX Pack", icon: <Tv className="w-4 h-4" />, description: "Chromatic, VHS, Halftone", enabled: true },
     ];
   };
 
@@ -153,6 +186,7 @@ export default function NodePalette() {
         { type: "pluginConfig", label: "Plugin Config", icon: <Plug className="w-4 h-4" />, description: "Pipeline settings" },
       ],
     },
+   
     {
       name: "Input",
       icon: <Video className="w-4 h-4" />,
@@ -170,37 +204,26 @@ export default function NodePalette() {
       name: "Pre-processor",
       icon: <Layers className="w-4 h-4" />,
       color: "text-slate-400",
-      nodes: [
-        { type: "parameters", label: "Create New", icon: <Settings className="w-4 h-4" />, description: "Custom pre-processor" },
-        { type: "segmentation", label: "Segmentation", icon: <Scan className="w-4 h-4" />, description: "Object detection" },
-        { type: "depthEstimation", label: "Depth", icon: <Eye className="w-4 h-4" />, description: "Depth estimation" },
-        { type: "backgroundRemoval", label: "Bg Remove", icon: <EyeOff className="w-4 h-4" />, description: "Remove background" },
-      ],
+      nodes: getPreprocessorNodes(),
     },
     {
       name: "Post-processor",
       icon: <Play className="w-4 h-4" />,
       color: "text-slate-400",
-      nodes: [
-        { type: "parameters", label: "Create New", icon: <Settings className="w-4 h-4" />, description: "Custom post-processor" },
-        { type: "colorGrading", label: "Color Grading", icon: <Palette className="w-4 h-4" />, description: "Color adjustment" },
-        { type: "upscaling", label: "Upscale", icon: <Maximize className="w-4 h-4" />, description: "Resolution upscale" },
-        { type: "denoising", label: "Denoise", icon: <Waves className="w-4 h-4" />, description: "Remove noise" },
-        { type: "styleTransfer", label: "Style", icon: <Sparkles className="w-4 h-4" />, description: "Art style transfer" },
-      ],
+      nodes: getPostprocessorNodes(),
     },
-    {
-      name: "Effects",
-      icon: <SunMedium className="w-4 h-4" />,
-      color: "text-slate-400",
-      nodes: [
-        { type: "parameters", label: "New", icon: <Settings className="w-4 h-4" />, description: "Create custom effect" },
-        { type: "blur", label: "Blur", icon: <CircleDashed className="w-4 h-4" />, description: "Gaussian blur" },
-        { type: "mirror", label: "Mirror", icon: <Maximize2 className="w-4 h-4" />, description: "Mirror effect" },
-        { type: "kaleido", label: "Kaleido", icon: <Hexagon className="w-4 h-4" />, description: "Symmetry effect" },
-        { type: "vignette", label: "Vignette", icon: <Grid3X3 className="w-4 h-4" />, description: "Edge darkening" },
-      ],
-    },
+    // {
+    //   name: "Settings",
+    //   icon: <Settings className="w-4 h-4" />,
+    //   color: "text-slate-400",
+    //   nodes: [
+    //     { type: "noiseSettings", label: "Noise", icon: <Settings className="w-4 h-4" />, description: "Noise scale & controller" },
+    //     { type: "vaceSettings", label: "VACE", icon: <Settings className="w-4 h-4" />, description: "VACE context guidance" },
+    //     { type: "resolutionSettings", label: "Resolution", icon: <Maximize className="w-4 h-4" />, description: "Output resolution" },
+    //     { type: "advancedSettings", label: "Advanced", icon: <Settings className="w-4 h-4" />, description: "Denoising steps, quantization" },
+    //     { type: "loraSettings", label: "LoRA", icon: <Loader2 className="w-4 h-4" />, description: "LoRA adapters" },
+    //   ],
+    // },
     {
       name: "Output",
       icon: <Play className="w-4 h-4" />,
@@ -258,23 +281,27 @@ export default function NodePalette() {
                 ) : category.nodes.length > 0 ? (
                   category.nodes.map((node) => {
                     const nodeEnabled = enabled && (node.enabled !== false);
+                    const isComingSoon = node.enabled === false;
                     return (
                     <div
                       key={node.type}
                       draggable={nodeEnabled}
-                      onDragStart={(e) => nodeEnabled && handleDragStart(e, node.type, node.pipelineId)}
-                      title={!nodeEnabled ? (node.enabled === false ? "Not available for current mode/usage — change Plugin Config to enable" : "Set usage to include this category in Plugin Config to enable") : undefined}
+                      onDragStart={(e) => nodeEnabled && handleDragStart(e, node.type, node.pipelineId, node.createNewKind)}
+                      title={!nodeEnabled ? (node.enabled === false ? "Coming Soon - This processor is not yet available" : "Set usage to include this category in Plugin Config to enable") : undefined}
                       className={`group flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all ${
                         nodeEnabled
                           ? "text-muted-foreground hover:text-foreground hover:bg-accent/50 cursor-grab active:cursor-grabbing hover:border-border"
-                          : "text-muted-foreground/65 cursor-not-allowed border-transparent opacity-80"
+                          : "text-muted-foreground/50 cursor-not-allowed border-transparent opacity-60"
                       }`}
                     >
-                      <div className={`w-8 h-8 rounded flex items-center justify-center bg-background border border-border ${nodeEnabled ? category.color : "text-muted-foreground/65"} ${nodeEnabled ? "group-hover:border-primary/30" : ""}`}>
+                      <div className={`w-8 h-8 rounded flex items-center justify-center bg-background border ${nodeEnabled ? "border-border " + category.color : "border-border/50 text-muted-foreground/40"} ${nodeEnabled ? "group-hover:border-primary/30" : ""}`}>
                         {node.icon}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium">{node.label}</div>
+                        <div className="font-medium flex items-center gap-2">
+                          {node.label}
+                        
+                        </div>
                         <div className="text-xs truncate">{node.description}</div>
                       </div>
                     </div>

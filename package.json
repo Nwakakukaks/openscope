@@ -15,6 +15,7 @@
     "@types/prismjs": "^1.26.6",
     "@xyflow/react": "^12.0.0",
     "clsx": "^2.1.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.312.0",
     "next": "14.1.0",
     "prismjs": "^1.30.0",

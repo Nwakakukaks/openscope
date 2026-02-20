@@ -45,6 +45,13 @@ export interface CloudStatus {
 
 const SCOPE_API_URL = "/api/scope";
 
+// Get backend URL - use relative path in production, localhost:3001 in dev
+const getBackendUrl = () => {
+  if (typeof window === 'undefined') return '';
+  // In development, use localhost:3001; in production, use relative path
+  return window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+};
+
 export function useScopeServer() {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -56,10 +63,11 @@ export function useScopeServer() {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
 
   const checkConnection = useCallback(async () => {
     try {
-      const response = await fetch(`${SCOPE_API_URL}/health`);
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/health`);
       if (response.ok) {
         setIsConnected(true);
         setError(null);
@@ -76,7 +84,7 @@ export function useScopeServer() {
 
   const fetchPipelines = useCallback(async () => {
     try {
-      const response = await fetch(`${SCOPE_API_URL}/pipelines`);
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/pipelines`);
       const data = await response.json();
       setPipelines(data.pipelines || {});
       return data.pipelines;
@@ -88,7 +96,7 @@ export function useScopeServer() {
 
   const getPipelineStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${SCOPE_API_URL}/pipeline/status`);
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/pipeline/status`);
       const data = await response.json();
       setPipelineStatus(data);
       return data;
@@ -101,7 +109,7 @@ export function useScopeServer() {
   const loadPipeline = useCallback(async (pipelineIds: string[], loadParams?: Record<string, unknown>, waitForLoad: boolean = true) => {
     try {
       setPipelineStatus({ status: "loading" });
-      const response = await fetch(`${SCOPE_API_URL}/pipeline/load`, {
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/pipeline/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,7 +145,7 @@ export function useScopeServer() {
         
         while (Date.now() - startTime < maxTimeout) {
           await new Promise(resolve => setTimeout(resolve, pollInterval));
-          const statusResponse = await fetch(`${SCOPE_API_URL}/pipeline/status`);
+          const statusResponse = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/pipeline/status`);
           const statusData = await statusResponse.json();
           setPipelineStatus(statusData);
           
@@ -161,7 +169,7 @@ export function useScopeServer() {
 
   const getCloudStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${SCOPE_API_URL}/cloud/status`);
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/cloud/status`);
       const data = await response.json();
       setCloudStatus(data);
       return data;
@@ -174,7 +182,7 @@ export function useScopeServer() {
   const connectToCloud = useCallback(async (appId?: string, apiKey?: string) => {
     try {
       setIsConnecting(true);
-      const response = await fetch(`${SCOPE_API_URL}/cloud/connect`, {
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/cloud/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -200,7 +208,7 @@ export function useScopeServer() {
 
   const disconnectFromCloud = useCallback(async () => {
     try {
-      const response = await fetch(`${SCOPE_API_URL}/cloud/disconnect`, {
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/cloud/disconnect`, {
         method: "POST",
       });
       
@@ -221,16 +229,28 @@ export function useScopeServer() {
     localStream?: MediaStream | null
   ) => {
     try {
-      const iceResponse = await fetch(`${SCOPE_API_URL}/webrtc/ice-servers`);
+      const iceResponse = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/webrtc/ice-servers`);
       const iceData: IceServersResponse = await iceResponse.json();
 
-      const config: RTCConfiguration = {
-        iceServers: iceData.iceServers.map(server => ({
-          urls: server.urls,
-          ...(server.username && { username: server.username }),
-          ...(server.credential && { credential: server.credential }),
-        })),
+      // Helper to normalize urls (can be string or array)
+      const normalizeUrls = (urls: string | string[]): string[] => {
+        if (typeof urls === "string") return [urls];
+        return urls;
       };
+
+      // Build ICE server config - handle both string and array formats
+      const config: RTCConfiguration = {
+        iceServers: [
+          ...iceData.iceServers.map(server => ({
+            urls: normalizeUrls(server.urls),
+            ...(server.username && { username: server.username }),
+            ...(server.credential && { credential: server.credential }),
+          })),
+          { urls: "stun:stun.l.google.com:19302" }, // Google fallback
+        ],
+      };
+
+      console.log("[OpenScope] ICE servers config:", JSON.stringify(config, null, 2));
 
       const pc = new RTCPeerConnection(config);
       peerConnectionRef.current = pc;
@@ -239,6 +259,7 @@ export function useScopeServer() {
       const dataChannel = pc.createDataChannel("parameters", {
         ordered: true,
       });
+      dataChannelRef.current = dataChannel;
       
       let dataChannelReady = new Promise<void>((resolve) => {
         dataChannel.onopen = () => resolve();
@@ -279,14 +300,31 @@ export function useScopeServer() {
         }
       };
 
+      // Log ICE connection state changes
+      pc.oniceconnectionstatechange = () => {
+        console.log("[OpenScope] ICE connection state:", pc.iceConnectionState);
+      };
+
       pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log("[OpenScope] Local ICE candidate:", event.candidate.toJSON());
+        }
         if (event.candidate && sessionIdRef.current) {
-          fetch(`${SCOPE_API_URL}/webrtc/ice?session_id=${sessionIdRef.current}`, {
+          const iceUrl = `${getBackendUrl()}/api/scope/webrtc/ice?session_id=${sessionIdRef.current}`;
+          console.log("[OpenScope] Sending ICE candidate to:", iceUrl);
+          fetch(iceUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(event.candidate.toJSON()),
-          }).catch(console.error);
+          }).catch(err => console.error("[OpenScope] ICE candidate send failed:", err));
         }
+      };
+
+      // Log when remote ICE candidates are received
+      const originalAddIceCandidate = pc.addIceCandidate.bind(pc);
+      pc.addIceCandidate = async (candidate) => {
+        console.log("[OpenScope] Adding remote ICE candidate:", candidate);
+        return originalAddIceCandidate(candidate);
       };
 
       const offer = await pc.createOffer();
@@ -299,7 +337,7 @@ export function useScopeServer() {
       };
       console.log("[OpenScope] Full request body:", JSON.stringify(requestBody, null, 2));
 
-      const response = await fetch(`${SCOPE_API_URL}/webrtc/offer`, {
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/webrtc/offer`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -355,6 +393,21 @@ export function useScopeServer() {
     }
     sessionIdRef.current = null;
     remoteStreamRef.current = null;
+    dataChannelRef.current = null;
+  }, []);
+
+  // Send parameter update via WebRTC data channel
+  const sendParameterUpdate = useCallback((params: Record<string, unknown>) => {
+    if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
+      const message = JSON.stringify({
+        type: "parameters",
+        ...params,
+      });
+      dataChannelRef.current.send(message);
+      console.log("[OpenScope] Sent parameter update:", params);
+    } else {
+      console.warn("[OpenScope] Data channel not ready for parameter update");
+    }
   }, []);
 
   useEffect(() => {
@@ -380,6 +433,7 @@ export function useScopeServer() {
     disconnectFromCloud,
     startWebRTC,
     stopWebRTC,
+    sendParameterUpdate,
     remoteStream: remoteStreamRef.current,
   };
 }

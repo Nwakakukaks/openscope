@@ -25,9 +25,10 @@ interface NodeCanvasProps {
   localStream?: MediaStream | null;
   remoteStream?: MediaStream | null;
   isStreaming?: boolean;
+  sendParameterUpdate?: (params: Record<string, unknown>) => void;
 }
 
-export default function NodeCanvas({ localStream, remoteStream, isStreaming }: NodeCanvasProps) {
+export default function NodeCanvas({ localStream, remoteStream, isStreaming, sendParameterUpdate }: NodeCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
@@ -48,9 +49,10 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming }: N
         localStream,
         remoteStream,
         isStreaming,
+        sendParameterUpdate,
       },
     }));
-  }, [nodes, localStream, remoteStream, isStreaming]);
+  }, [nodes, localStream, remoteStream, isStreaming, sendParameterUpdate]);
 
   useEffect(() => {
     if (wrapperRef.current) {
@@ -79,6 +81,7 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming }: N
 
       const nodeType = event.dataTransfer.getData("nodeType");
       if (!nodeType || !wrapperRef.current) return;
+      const createNewKind = event.dataTransfer.getData("createNewKind") || undefined;
 
       const reactFlowBounds = wrapperRef.current.getBoundingClientRect();
       const position = {
@@ -86,7 +89,23 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming }: N
         y: event.clientY - reactFlowBounds.top - 25,
       };
 
-      addNode(nodeType, position);
+      if (nodeType === "parameters" && createNewKind) {
+        addNode(nodeType, position, { createNewKind });
+      } else if (createNewKind === "preprocessor" || createNewKind === "postprocessor") {
+        // Add the custom node without selecting it (so parameter panel doesn't open)
+        addNode("custom", position, { 
+          createNewKind,
+          name: createNewKind === "preprocessor" ? "Custom Preprocessor" : "Custom Postprocessor",
+          code: "# Describe your processor and AI will generate the code",
+          isCodeMode: true,
+        }, { selectNode: false });
+        // Trigger AI modal to open
+        window.dispatchEvent(new CustomEvent('openscope:open-ai-assistant', { 
+          detail: { kind: createNewKind, position } 
+        }));
+      } else {
+        addNode(nodeType, position);
+      }
     },
     [addNode]
   );

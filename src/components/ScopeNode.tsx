@@ -28,6 +28,10 @@ import {
   Cpu,
   Layers2,
   Wand2,
+  Sparkles,
+  Tv,
+  Loader2,
+  Webcam,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import CodeEditor from "./CodeEditor";
@@ -204,6 +208,20 @@ class Vignette:
         # Create vignette mask and apply
         return frames  # TODO: Implement vignette
 `,
+  custom: `# Custom Effect
+# Define parameters in the params field as JSON:
+# [{"name": "intensity", "type": "float", "default": 0.5, "min": 0, "max": 1, "description": "Effect strength"}]
+
+import torch
+
+def process(frames, **kwargs):
+    # frames: tensor of shape (T, H, W, C) in [0, 1] range
+    # Access your parameters via kwargs, e.g.:
+    # intensity = kwargs.get("intensity", 0.5)
+    
+    # Your processing code here
+    return frames
+`,
   blend: `from scope.core.pipeline import BasePipeline
 import cv2
 
@@ -331,25 +349,11 @@ class PipelineOutput:
         # This is the final output
         return frames
 `,
-  preprocessorOutput: `from scope.core.pipeline import BasePipeline
-
-class PreprocessorOutput:
-    """Preprocessor output marker"""
-    
-    def process(self, frames, **kwargs):
-        return frames  # Output for preprocessor pipeline
-`,
-  postprocessorOutput: `from scope.core.pipeline import BasePipeline
-
-class PostprocessorOutput:
-    """Postprocessor output marker"""
-    
-    def process(self, frames, **kwargs):
-        return frames  # Output for postprocessor pipeline
-`,
 };
 
-function getNodeDefaultCode(nodeType: string): string {
+function getNodeDefaultCode(nodeType: string, config?: Record<string, unknown>): string {
+  const getParam = (key: string, def: unknown) => config?.[key] ?? def;
+  
   if (nodeType.startsWith("pipeline_")) {
     const pipelineId = nodeType.replace("pipeline_", "");
     return `from scope.core.pipeline import BasePipeline, BasePipelineConfig
@@ -369,7 +373,307 @@ class ${toPascalCase(pipelineId)}(BasePipeline):
         return frames  # TODO: Implement ${pipelineId}
 `;
   }
-  return DEFAULT_CODE_TEMPLATES[nodeType] || `# No template available for ${nodeType}
+
+  const templates: Record<string, string> = {
+    brightness: `from scope.core.pipeline import BasePipeline
+import cv2
+import numpy as np
+
+class Brightness:
+    """Adjust brightness of video frames"""
+    
+    def __init__(self, value: int = ${getParam("value", 0)}):
+        self.value = value  # Range: -100 to 100
+    
+    def process(self, frames, **kwargs):
+        alpha = 1.0 + (self.value / 100)
+        adjusted = cv2.convertScaleAbs(frames, alpha=alpha, beta=0)
+        return adjusted
+`,
+    contrast: `from scope.core.pipeline import BasePipeline
+import cv2
+
+class Contrast:
+    """Adjust contrast of video frames"""
+    
+    def __init__(self, value: float = ${getParam("value", 1.0)}):
+        self.value = value  # Range: 0 to 3
+    
+    def process(self, frames, **kwargs):
+        adjusted = cv2.convertScaleAbs(frames, alpha=self.value, beta=0)
+        return adjusted
+`,
+    blur: `from scope.core.pipeline import BasePipeline
+import cv2
+
+class Blur:
+    """Apply Gaussian blur to video frames"""
+    
+    def __init__(self, radius: int = ${getParam("radius", 5)}):
+        self.radius = radius if radius % 2 == 1 else radius + 1
+    
+    def process(self, frames, **kwargs):
+        blurred = cv2.GaussianBlur(frames, (self.radius, self.radius), 0)
+        return blurred
+`,
+    mirror: `from scope.core.pipeline import BasePipeline
+import cv2
+
+class Mirror:
+    """Flip video frames horizontally, vertically, or both"""
+    
+    def __init__(self, mode: str = "${getParam("mode", "horizontal")}"):
+        self.mode = mode  # horizontal, vertical, both
+    
+    def process(self, frames, **kwargs):
+        flip_code = {"horizontal": 1, "vertical": 0, "both": -1}.get(self.mode, 1)
+        flipped = cv2.flip(frames, flip_code)
+        return flipped
+`,
+    kaleido: `from scope.core.pipeline import BasePipeline
+import cv2
+import numpy as np
+
+class Kaleido:
+    """Kaleidoscope / mirror symmetry effect"""
+    
+    def __init__(self, slices: int = ${getParam("slices", 6)}, rotation: float = ${getParam("rotation", 0)}, zoom: float = ${getParam("zoom", 1.0)}):
+        self.slices = slices
+        self.rotation = rotation
+        self.zoom = zoom
+    
+    def process(self, frames, **kwargs):
+        h, w = frames.shape[:2]
+        center = (w // 2, h // 2)
+        # Apply radial symmetry
+        return frames  # TODO: Implement kaleido
+`,
+    vignette: `from scope.core.pipeline import BasePipeline
+import cv2
+import numpy as np
+
+class Vignette:
+    """Darken edges of frames for cinematic look"""
+    
+    def __init__(self, intensity: float = ${getParam("intensity", 0.5)}, smoothness: float = ${getParam("smoothness", 0.5)}):
+        self.intensity = intensity
+        self.smoothness = smoothness
+    
+    def process(self, frames, **kwargs):
+        rows, cols = frames.shape[:2]
+        kernel_x = cv2.getGaussianKernel(cols, cols * self.smoothness)
+        kernel_y = cv2.getGaussianKernel(rows, rows * self.smoothness)
+        kernel = kernel_y * kernel_x.T
+        mask = kernel / kernel.max()
+        mask = cv2.resize(mask, (cols, rows))
+        vignetted = frames * mask[..., np.newaxis]
+        return vignetted.astype(np.uint8)
+`,
+    blend: `from scope.core.pipeline import BasePipeline
+import cv2
+
+class Blend:
+    """Blend two video sources together"""
+    
+    def __init__(self, mode: str = "${getParam("mode", "add")}", opacity: float = ${getParam("opacity", 0.5)}):
+        self.mode = mode
+        self.opacity = opacity
+    
+    def process(self, frames, frames2=None, **kwargs):
+        if frames2 is not None:
+            if self.mode == "add":
+                blended = cv2.addWeighted(frames, 1-self.opacity, frames2, self.opacity, 0)
+            elif self.mode == "multiply":
+                blended = frames * (1-self.opacity) + frames2 * self.opacity
+            else:
+                blended = frames
+            return blended
+        return frames
+`,
+    segmentation: `from scope.core.pipeline import BasePipeline
+
+class Segmentation:
+    """AI segmentation for object detection/masking"""
+    
+    def __init__(self, model: str = "${getParam("model", "sam")}", target_class: str = "${getParam("targetClass", "person")}", confidence: float = ${getParam("confidence", 0.5)}):
+        self.model = model
+        self.target_class = target_class
+        self.confidence = confidence
+    
+    def process(self, frames, **kwargs):
+        # Run segmentation model (sam, sam2, yolo)
+        # masks = model.predict(frames, classes=[self.target_class])
+        return frames, None  # Return frames + masks
+`,
+    depthEstimation: `from scope.core.pipeline import BasePipeline
+
+class DepthEstimation:
+    """Generate depth maps for VACE structural guidance"""
+    
+    def __init__(self, model: str = "${getParam("model", "depth-anything")}"):
+        self.model = model
+    
+    def process(self, frames, **kwargs):
+        # Run depth estimation model
+        # depth_maps = model.predict(frames)
+        return frames, None  # Return frames + depth maps
+`,
+    backgroundRemoval: `from scope.core.pipeline import BasePipeline
+
+class BackgroundRemoval:
+    """Remove background with transparent alpha"""
+    
+    def __init__(self, model: str = "${getParam("model", "u2net")}"):
+        self.model = model
+    
+    def process(self, frames, **kwargs):
+        # Run background removal
+        # rgba_frames = model.predict(frames)
+        return frames  # Return RGBA frames
+`,
+    colorGrading: `from scope.core.pipeline import BasePipeline
+import cv2
+
+class ColorGrading:
+    """Professional color correction"""
+    
+    def __init__(self, temperature: int = ${getParam("temperature", 0)}, tint: int = ${getParam("tint", 0)}, saturation: int = ${getParam("saturation", 0)}, contrast: int = ${getParam("contrast", 0)}):
+        self.temperature = temperature
+        self.tint = tint
+        self.saturation = saturation
+        self.contrast = contrast
+    
+    def process(self, frames, **kwargs):
+        # Apply color grading
+        # Temperature: shift red/blue, Tint: shift green/magenta
+        # Saturation: convert to HSV and adjust S channel
+        # Contrast: apply histogram equalization
+        return frames  # TODO: Implement
+`,
+    upscaling: `from scope.core.pipeline import BasePipeline
+
+class Upscaling:
+    """AI-powered video resolution upscaling"""
+    
+    def __init__(self, scale: int = ${getParam("scale", 2)}, model: str = "${getParam("model", "realesrgan")}"):
+        self.scale = scale
+        self.model = model
+    
+    def process(self, frames, **kwargs):
+        # Run upscaling model
+        # upscaled = model.predict(frames, scale=self.scale)
+        return frames  # TODO: Implement
+`,
+    denoising: `from scope.core.pipeline import BasePipeline
+
+class Denoising:
+    """AI video denoising"""
+    
+    def __init__(self, strength: float = ${getParam("strength", 0.5)}, method: str = "${getParam("method", "bm3d")}"):
+        self.strength = strength
+        self.method = method
+    
+    def process(self, frames, **kwargs):
+        # Run denoising
+        # denoised = model.predict(frames, strength=self.strength)
+        return frames  # TODO: Implement
+`,
+    styleTransfer: `from scope.core.pipeline import BasePipeline
+
+class StyleTransfer:
+    """Apply artistic styles to video"""
+    
+    def __init__(self, style: str = "${getParam("style", "anime")}", strength: float = ${getParam("strength", 0.7)}):
+        self.style = style
+        self.strength = strength
+    
+    def process(self, frames, **kwargs):
+        # Run style transfer model
+        # styled = model.predict(frames, style=self.style)
+        return frames  # TODO: Implement
+`,
+    chromatic: `from scope.core.pipeline import BasePipeline
+import cv2
+import numpy as np
+
+class ChromaticAberration:
+    """RGB channel displacement effect"""
+    
+    def __init__(self, enabled: bool = ${getParam("enabled", true)}, intensity: float = ${getParam("intensity", 0.3)}, angle: float = ${getParam("angle", 0)}):
+        self.enabled = enabled
+        self.intensity = intensity
+        self.angle = angle * np.pi / 180
+    
+    def process(self, frames, **kwargs):
+        if not self.enabled:
+            return frames
+        h, w = frames.shape[:2]
+        dx = int(self.intensity * 20 * np.cos(self.angle))
+        dy = int(self.intensity * 20 * np.sin(self.angle))
+        b = frames[:, :, 0]
+        g = frames[:, :, 1]
+        r = frames[:, :, 2]
+        b_shifted = np.clip(np.pad(b, ((abs(dy), 0), (abs(dx), 0)), mode='edge')[:h, :w], 0, 255).astype(np.uint8)
+        r_shifted = np.clip(np.pad(r, ((abs(dy), 0), (abs(dx), 0)), mode='edge')[:h, :w], 0, 255).astype(np.uint8)
+        return np.stack([b_shifted, g, r_shifted], axis=-1)
+`,
+    vhs: `from scope.core.pipeline import BasePipeline
+import cv2
+import numpy as np
+import random
+
+class VHS:
+    """Retro VHS / CRT effect"""
+    
+    def __init__(self, enabled: bool = ${getParam("enabled", false)}, scanLineIntensity: float = ${getParam("scanLineIntensity", 0.3)}, scanLineCount: int = ${getParam("scanLineCount", 100)}, noise: float = ${getParam("noise", 0.1)}, tracking: float = ${getParam("tracking", 0.2)}):
+        self.enabled = enabled
+        self.scanLineIntensity = scanLineIntensity
+        self.scanLineCount = scanLineCount
+        self.noise = noise
+        self.tracking = tracking
+    
+    def process(self, frames, **kwargs):
+        if not self.enabled:
+            return frames
+        # Add scanlines
+        for i in range(0, frames.shape[0], self.scanLineCount):
+            frames[i:i+1, :, :] = frames[i:i+1, :, :] * (1 - self.scanLineIntensity)
+        # Add noise
+        if self.noise > 0:
+            noise = np.random.normal(0, self.noise * 255, frames.shape).astype(np.uint8)
+            frames = cv2.add(frames, noise)
+        return frames
+`,
+    halftone: `from scope.core.pipeline import BasePipeline
+import cv2
+import numpy as np
+
+class Halftone:
+    """Newspaper dot pattern effect"""
+    
+    def __init__(self, enabled: bool = ${getParam("enabled", false)}, dotSize: int = ${getParam("dotSize", 8)}, sharpness: float = ${getParam("sharpness", 0.7)}):
+        self.enabled = enabled
+        self.dotSize = dotSize
+        self.sharpness = sharpness
+    
+    def process(self, frames, **kwargs):
+        if not self.enabled:
+            return frames
+        # Convert to grayscale for halftone pattern
+        gray = cv2.cvtColor(frames, cv2.COLOR_BGR2GRAY)
+        h, w = gray.shape
+        output = np.zeros_like(frames)
+        for y in range(0, h, self.dotSize):
+            for x in range(0, w, self.dotSize):
+                region = gray[y:min(y+self.dotSize, h), x:min(x+self.dotSize, w)]
+                avg = np.mean(region)
+                radius = int((avg / 255) * self.dotSize / 2)
+                cv2.circle(output, (x + self.dotSize//2, y + self.dotSize//2), radius, (255, 255, 255), -1)
+        return output
+`,
+  };
+
+  return templates[nodeType] || DEFAULT_CODE_TEMPLATES[nodeType] || `# No template available for ${nodeType}
 # Add your custom processing code here
 def process(frames, **kwargs):
     return frames
@@ -393,11 +697,14 @@ const nodeIcons: Record<string, React.ReactNode> = {
   blur: <CircleDashed className="w-3 h-3" />,
   mirror: <Maximize2 className="w-3 h-3" />,
   kaleido: <Hexagon className="w-3 h-3" />,
+  kaleidoscope: <Hexagon className="w-3 h-3" />,
+  yoloMask: <EyeOff className="w-3 h-3" />,
+  bloom: <SunMedium className="w-3 h-3" />,
+  cosmicVFX: <Sparkles className="w-3 h-3" />,
+  vfxPack: <Tv className="w-3 h-3" />,
   blend: <Layers className="w-3 h-3" />,
   mask: <EyeOff className="w-3 h-3" />,
   pipelineOutput: <Play className="w-3 h-3" />,
-  preprocessorOutput: <Square className="w-3 h-3" />,
-  postprocessorOutput: <EyeOff className="w-3 h-3" />,
   noteGuide: <StickyNote className="w-3 h-3" />,
   lessonGettingStarted: <GraduationCap className="w-3 h-3" />,
   lessonFirstProcessor: <Lightbulb className="w-3 h-3" />,
@@ -413,6 +720,13 @@ const nodeIcons: Record<string, React.ReactNode> = {
   denoising: <CircleDashed className="w-3 h-3" />,
   styleTransfer: <Layers className="w-3 h-3" />,
   vignette: <Hexagon className="w-3 h-3" />,
+  custom: <Code className="w-3 h-3" />,
+  // Settings nodes
+  noiseSettings: <Settings className="w-3 h-3" />,
+  vaceSettings: <Settings className="w-3 h-3" />,
+  resolutionSettings: <Maximize2 className="w-3 h-3" />,
+  advancedSettings: <Settings className="w-3 h-3" />,
+  loraSettings: <Loader2 className="w-3 h-3" />,
 };
 
 const NODE_GUIDES: Record<string, string> = {
@@ -428,6 +742,11 @@ const NODE_GUIDES: Record<string, string> = {
   blur: "Apply Gaussian blur: 0-50px radius",
   mirror: "Flip video: horizontal, vertical, or both",
   kaleido: "Symmetry effect: slices (2-24), rotation, zoom",
+  kaleidoscope: "GPU kaleidoscope/mirror effect from kaleido-scope plugin",
+  yoloMask: "YOLO26 segmentation from scope_yolo_mask plugin",
+  bloom: "Bloom/glow effect from scope-bloom plugin",
+  cosmicVFX: "30+ visual effects from scope-cosmic-vfx plugin",
+  vfxPack: "Chromatic, VHS, Halftone from scope-vfx plugin",
   blend: "Blend two sources: mode + opacity",
   mask: "Generate masks: target class + confidence",
   segmentation: "Segment objects before main pipeline (preprocessor)",
@@ -438,14 +757,19 @@ const NODE_GUIDES: Record<string, string> = {
   denoising: "Remove noise: strength 0-1 (postprocessor)",
   styleTransfer: "Art style: anime, oil, sketch, watercolor (postprocessor)",
   vignette: "Edge darkening: intensity + smoothness (postprocessor)",
+  custom: "Create custom effect with your own parameters and processing code",
   pipelineOutput: "Main pipeline output - for generative AI",
-  preprocessorOutput: "Preprocessor output - runs before main",
-  postprocessorOutput: "Postprocessor output - runs after main",
   lessonGettingStarted: "Welcome to OpenScope! Learn what OpenScope is and get started",
   lessonFirstProcessor: "Step-by-step guide to creating your first processor",
   lessonNodeTypes: "Understand the different node types and their purposes",
   lessonPreprocessors: "Learn how to use and create preprocessors",
   lessonPostprocessors: "Learn how to use and create postprocessors",
+  // Settings nodes
+  noiseSettings: "Control noise scale (0-2) and enable/disable noise controller",
+  vaceSettings: "Enable VACE context guidance, set context scale and use input video",
+  resolutionSettings: "Set output video resolution (width x height)",
+  advancedSettings: "Configure denoising steps, quantization, and KV cache attention bias",
+  loraSettings: "Add LoRA adapters for style/weight modification",
 };
 
 
@@ -463,6 +787,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     localStream?: MediaStream | null;
     remoteStream?: MediaStream | null;
     isStreaming?: boolean;
+    sendParameterUpdate?: (params: Record<string, unknown>) => void;
   };
   const selectNode = useGraphStore((state) => state.selectNode);
   const deleteNode = useGraphStore((state) => state.deleteNode);
@@ -473,7 +798,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const outputVideoRef = useRef<HTMLVideoElement>(null);
 
   const isInput = ["videoInput", "textPrompt", "imageInput", "parameters"].includes(nodeData.type);
-  const isOutput = ["pipelineOutput", "preprocessorOutput", "postprocessorOutput"].includes(nodeData.type);
+  const isOutput = nodeData.type === "pipelineOutput";
   const isNoteGuide = nodeData.type === "noteGuide" || nodeData.type.startsWith("lesson");
   const isPipeline = nodeData.type.startsWith("pipeline_");
   const isEntryPoint = nodeData.type === "pluginConfig";
@@ -502,16 +827,67 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   // Auto-initialize code when first entering code mode
   useEffect(() => {
     if (isCodeMode && !currentCode) {
-      const defaultCode = getNodeDefaultCode(nodeData.type);
+      const defaultCode = getNodeDefaultCode(nodeData.type, nodeData.config);
       updateNodeConfig(id, { pythonCode: defaultCode });
     }
-  }, [isCodeMode, currentCode, nodeData.type, id, updateNodeConfig]);
+  }, [isCodeMode, currentCode, nodeData.type, nodeData.config, id, updateNodeConfig]);
+
+  // Reactive code updates when parameters change
+  useEffect(() => {
+    if (isCodeMode && currentCode) {
+      // Regenerate code when config changes to reflect new parameter values
+      const newCode = getNodeDefaultCode(nodeData.type, nodeData.config);
+      if (newCode !== currentCode) {
+        updateNodeConfig(id, { pythonCode: newCode });
+      }
+    }
+  }, [nodeData.config, isCodeMode, currentCode, nodeData.type, id, updateNodeConfig]);
+
+  // Send parameter updates when settings nodes change during streaming
+  const settingsNodeTypes = ["noiseSettings", "vaceSettings", "resolutionSettings", "advancedSettings", "loraSettings"];
+  const isSettingsNode = settingsNodeTypes.includes(nodeData.type);
+  
+  useEffect(() => {
+    if (isSettingsNode && nodeData.isStreaming && nodeData.sendParameterUpdate && nodeData.config) {
+      const config = nodeData.config;
+      const params: Record<string, unknown> = {};
+      
+      if (nodeData.type === "noiseSettings") {
+        params.noise_scale = config.noiseScale ?? 0.7;
+        params.noise_controller = config.noiseController ?? true;
+      }
+      if (nodeData.type === "vaceSettings") {
+        params.vace_enabled = config.vaceEnabled ?? false;
+        params.vace_context_scale = config.vaceContextScale ?? 1.0;
+      }
+      if (nodeData.type === "resolutionSettings") {
+        params.width = config.width ?? 512;
+        params.height = config.height ?? 512;
+      }
+      if (nodeData.type === "advancedSettings") {
+        params.denoising_steps = config.denoisingSteps ?? 30;
+        params.quantization = config.quantization ?? "";
+        params.kv_cache_attention_bias = config.kvCacheAttentionBias ?? 0.0;
+      }
+      if (nodeData.type === "loraSettings") {
+        try {
+          params.loras = typeof config.loras === "string" ? JSON.parse(config.loras) : config.loras ?? [];
+        } catch {
+          params.loras = [];
+        }
+      }
+      
+      if (Object.keys(params).length > 0) {
+        nodeData.sendParameterUpdate(params);
+      }
+    }
+  }, [nodeData.config, nodeData.isStreaming, nodeData.sendParameterUpdate, nodeData.type, isSettingsNode]);
 
   const toggleCodeMode = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isCodeMode && !currentCode) {
       // Initialize with default code when entering code mode
-      const defaultCode = getNodeDefaultCode(nodeData.type);
+      const defaultCode = getNodeDefaultCode(nodeData.type, nodeData.config);
       updateNodeConfig(id, { isCodeMode: true, pythonCode: defaultCode });
     } else {
       updateNodeConfig(id, { isCodeMode: !isCodeMode });
@@ -521,11 +897,19 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isVideo: boolean) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
+    // Stop any active webcam stream when uploading a file
+    if (nodeData.localStream && nodeData.isStreaming) {
+      nodeData.localStream.getTracks().forEach(track => track.stop());
+    }
+    
     const url = URL.createObjectURL(file);
     const key = isVideo ? "videoPreviewUrl" : "previewUrl";
     updateNodeConfig(id, {
       [key]: url,
       fileName: file.name,
+      isStreaming: false,
+      localStream: null,
       ...(isVideo ? {} : { width: 0, height: 0 }),
     });
     
@@ -603,11 +987,17 @@ function ScopeNode({ id, data, selected }: NodeProps) {
 
   const configPreview =
     nodeData.config && Object.keys(nodeData.config).length > 0
-      ? Object.entries(nodeData.config)
-          .filter(([k]) => !["previewUrl", "videoPreviewUrl", "fileName"].includes(k))
-          .slice(0, 2)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(", ")
+      ? nodeData.type === "pluginConfig"
+        ? nodeData.config.pluginName 
+          ? `${nodeData.config.pluginName}`
+          : `pipeline: ${nodeData.config.pipelineId || "passthrough"}`
+        : nodeData.type === "pipeline"
+          ? `pipeline: ${nodeData.config.pipelineId || "passthrough"}`
+          : Object.entries(nodeData.config)
+              .filter(([k]) => !["previewUrl", "videoPreviewUrl", "fileName"].includes(k))
+              .slice(0, 2)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join(", ")
       : null;
 
   const previewUrl = nodeData.config?.previewUrl as string | undefined;
@@ -615,8 +1005,10 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const width = nodeData.config?.width as number | undefined;
   const height = nodeData.config?.height as number | undefined;
   const fileName = nodeData.config?.fileName as string | undefined;
+  const textContent = nodeData.config?.Text as string | undefined;
   const showImagePreview = nodeData.type === "imageInput";
   const showVideoPreview = nodeData.type === "videoInput";
+  const showTextPreview = nodeData.type === "textPrompt";
   const showCodeButton = !isOutput;
   const guideText = nodeData.type.startsWith("pipeline_") 
     ? `Main pipeline - runs locally or remotely`
@@ -720,7 +1112,8 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       {showVideoPreview && !isCodeMode && (
         <div className="px-3 pb-3 space-y-2">
           <div className="mt-2 rounded overflow-hidden bg-background border border-border aspect-video flex items-center justify-center min-h-[80px]">
-            {nodeData.isStreaming && nodeData.localStream ? (
+            {/* Show webcam if streaming, otherwise show file */}
+            {(nodeData.isStreaming === true && nodeData.localStream) ? (
               <video
                 ref={inputVideoRef}
                 className="max-w-full max-h-[120px] object-contain"
@@ -742,17 +1135,52 @@ function ScopeNode({ id, data, selected }: NodeProps) {
             )}
           </div>
           <div className="flex items-center gap-2">
-           
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 videoFileRef.current?.click();
               }}
-              className="flex items-center gap-1 px-2 py-1 w-full text-xs bg-muted hover:bg-accent text-foreground rounded border border-border transition-colors"
+              className="flex items-center gap-1 px-2 py-1 flex-1 text-xs bg-muted hover:bg-accent text-foreground rounded border border-border transition-colors justify-center"
             >
               <FileUp className="w-3 h-3" />
               choose file
+            </button>
+            <button
+              type="button"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const isCurrentlyStreaming = nodeData.isStreaming === true && nodeData.localStream;
+                if (isCurrentlyStreaming) {
+                  // Stop webcam
+                  if (nodeData.localStream) {
+                    nodeData.localStream.getTracks().forEach(track => track.stop());
+                  }
+                  updateNodeConfig(id, { isStreaming: false, localStream: null });
+                } else {
+                  // Start webcam
+                  try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    // Clear file preview when starting webcam
+                    updateNodeConfig(id, { 
+                      isStreaming: true, 
+                      localStream: stream,
+                      videoPreviewUrl: null,
+                      fileName: null,
+                    });
+                  } catch (err) {
+                    console.error("Failed to access webcam:", err);
+                  }
+                }
+              }}
+              className={`flex items-center gap-1 px-2 py-1 flex-1 text-xs rounded border transition-colors justify-center ${
+                nodeData.isStreaming === true && nodeData.localStream
+                  ? "bg-red-500/20 border-red-500 text-red-400 hover:bg-red-500/30"
+                  : "bg-muted hover:bg-accent text-foreground border-border"
+              }`}
+            >
+              <Webcam className="w-3 h-3" />
+              {nodeData.isStreaming === true && nodeData.localStream ? "stop cam" : "webcam"}
             </button>
           </div>
           <input
@@ -762,6 +1190,15 @@ function ScopeNode({ id, data, selected }: NodeProps) {
             className="hidden"
             onChange={(e) => handleFileChange(e, true)}
           />
+        </div>
+      )}
+
+      {/* Text Input: show the text content */}
+      {showTextPreview && !isCodeMode && textContent && (
+        <div className="px-3 pb-3 space-y-2">
+          <div className="mt-2 rounded bg-muted/50 border border-border p-2 min-h-[40px] max-h-[80px] overflow-y-auto">
+            <p className="text-xs text-foreground whitespace-pre-wrap break-words">{textContent}</p>
+          </div>
         </div>
       )}
 
@@ -781,9 +1218,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
               <Play className="w-8 h-8 text-muted-foreground" />
             )}
           </div>
-          <div className="text-xs text-muted-foreground text-center">
-            {nodeData.isStreaming ? "Processing..." : "Output will appear here"}
-          </div>
+         
         </div>
       )}
 
@@ -791,7 +1226,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       {isCodeMode && (
         <div className="px-3 pb-3 mt-2 border-t border-border/40">
           <CodeEditor
-            value={String(nodeData.config?.pythonCode || getNodeDefaultCode(nodeData.type))}
+            value={String(nodeData.config?.pythonCode || getNodeDefaultCode(nodeData.type, nodeData.config))}
             onChange={(value) => updateNodeConfig(id, { pythonCode: value })}
             onClick={(e) => e.stopPropagation()}
           />
@@ -799,7 +1234,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       )}
 
       {/* Config summary for non-input nodes without inline preview */}
-      {configPreview && !showImagePreview && !showVideoPreview && !isCodeMode && (
+      {configPreview && !showImagePreview && !showVideoPreview && !isCodeMode && !isOutput && (
         <div className="px-3 py-2 bg-background/50 border-t border-border/40">
           <div className="text-xs text-muted-foreground truncate">{configPreview}</div>
         </div>

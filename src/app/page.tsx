@@ -1,300 +1,155 @@
-"use client";
-
-import { useState, useEffect, useRef, useCallback } from "react";
-import Header from "@/components/Header";
-import NodePalette from "@/components/NodePalette";
-import NodeCanvas from "@/components/NodeCanvas";
-import PropertiesPanel from "@/components/PropertiesPanel";
-import TemplateModal from "@/components/TemplateModal";
-import AIAssistant from "@/components/AIAssistant";
-import SaveModal from "@/components/SaveModal";
-import OpenModal from "@/components/OpenModal";
-import AuthModal from "@/components/AuthModal";
-import { useGraphStore } from "@/store/graphStore";
-import { useWorkflows } from "@/hooks/useWorkflows";
-import { useScopeServer } from "@/hooks/useScopeServer";
-import { supabase } from "@/lib/supabase";
+import Link from "next/link";
+import { Braces, BrainCog, FolderDown, Library, PictureInPicture, Workflow } from "lucide-react";
 
 export default function Home() {
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [showAI, setShowAI] = useState(false);
-  const [showSave, setShowSave] = useState(false);
-  const [showOpen, setShowOpen] = useState(false);
-  const [showAuth, setShowAuth] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  
-  const selectedNode = useGraphStore((state) => state.selectedNode);
-  const nodes = useGraphStore((state) => state.nodes);
-  const edges = useGraphStore((state) => state.edges);
-  const addOutputNode = useGraphStore((state) => state.addOutputNode);
-  
-  const { saveWorkflow, loading: saveLoading } = useWorkflows();
-  const {
-    isConnected: isScopeConnected,
-    isConnecting,
-    pipelineStatus,
-    loadPipeline,
-    startWebRTC,
-    stopWebRTC,
-    connectToCloud,
-  } = useScopeServer();
-  
-  const [user, setUser] = useState<{ email?: string; avatar_url?: string } | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  
-  const videoElementRef = useRef<HTMLVideoElement | null>(null);
-
-  const handleVideoUploadFromFile = useCallback(async (file: File) => {
-    // Clean up previous video element if exists
-    if (videoElementRef.current) {
-      videoElementRef.current.pause();
-      videoElementRef.current.src = '';
-      videoElementRef.current = null;
-    }
-
-    // Create video element to play the file (like Scope does)
-    const video = document.createElement('video');
-    video.src = URL.createObjectURL(file);
-    video.muted = true;
-    video.playsInline = true;
-    video.loop = true; // Loop the video continuously
-    video.autoplay = true;
-    videoElementRef.current = video;
-    
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error('Failed to load video'));
-    });
-    
-    // Create canvas matching video resolution
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    
-    if (!ctx) {
-      throw new Error('Failed to get canvas context');
-    }
-    
-    // Start video playback
-    await video.play();
-    
-    // Continuous frame capture at 15fps (like Scope)
-    const FPS = 15;
-    const stream = canvas.captureStream(FPS);
-    
-    // Draw frames continuously using requestAnimationFrame
-    const drawFrame = () => {
-      if (videoElementRef.current && ctx) {
-        ctx.drawImage(videoElementRef.current, 0, 0, canvas.width, canvas.height);
-      }
-      requestAnimationFrame(drawFrame);
-    };
-    drawFrame();
-    
-    setLocalStream(stream);
-  }, []);
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setUser({
-          email: user.email,
-          avatar_url: user.user_metadata?.avatar_url,
-        });
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          email: session.user.email,
-          avatar_url: session.user.user_metadata?.avatar_url,
-        });
-      } else {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Listen for video stream ready events from nodes
-  useEffect(() => {
-    const handleVideoStreamReady = (event: Event) => {
-      const customEvent = event as CustomEvent<{ stream: MediaStream; nodeId: string }>;
-      console.log("[OpenScope] Video stream ready from node:", customEvent.detail.nodeId);
-      setLocalStream(customEvent.detail.stream);
-    };
-    
-    window.addEventListener('openscope:video-stream-ready', handleVideoStreamReady);
-    return () => {
-      window.removeEventListener('openscope:video-stream-ready', handleVideoStreamReady);
-    };
-  }, []);
-
-  const handleSave = async (name: string, description: string) => {
-    await saveWorkflow(name, description);
-  };
-
-  const handleStartStream = useCallback(async () => {
-    if (!isScopeConnected) {
-      alert("Please ensure Scope server is running at http://localhost:8000");
-      return;
-    }
-
-    try {
-      setIsLoading(true);
-      
-      const pluginConfig = nodes.find(n => n.data.type === "pluginConfig");
-      const pipelineId = pluginConfig?.data?.config?.pipelineId as string || "my-plugin";
-      const mode = pluginConfig?.data?.config?.mode as string || "video";
-      const remoteInference = pluginConfig?.data?.config?.remoteInference as boolean ?? true;
-      const supportsPrompts = pluginConfig?.data?.config?.supportsPrompts as boolean ?? false;
-      
-      // Get input nodes
-      const videoInputNode = nodes.find(n => n.data.type === "videoInput");
-      const textPromptNodes = nodes.filter(n => n.data.type === "textPrompt");
-      const imageInputNodes = nodes.filter(n => n.data.type === "imageInput");
-      
-      // If remote inference is enabled, connect to cloud first
-      if (remoteInference) {
-        try {
-          await connectToCloud();
-        } catch (cloudErr) {
-          console.warn("Cloud connection failed, continuing anyway:", cloudErr);
-        }
-      }
-      
-      await loadPipeline([pipelineId], { remoteInference });
-      
-      // Build prompts array from textPrompt nodes
-      const prompts = textPromptNodes.map(node => ({
-        text: (node.data.config?.text as string) || "",
-        weight: (node.data.config?.weight as number) || 1,
-      }));
-      
-      console.log("[OpenScope] Video input node:", videoInputNode);
-      console.log("[OpenScope] Local stream:", localStream);
-      console.log("[OpenScope] Mode:", mode);
-      console.log("[OpenScope] Pipeline ID:", pipelineId);
-      
-      // Build initial parameters like Scope frontend does
-      const initialParameters: Record<string, unknown> = {
-        input_mode: mode,
-        prompt_interpolation_method: "linear",
-        noise_scale: 0.7,
-        noise_controller: true,
-        vace_context_scale: 1.0,
-        pipeline_ids: [pipelineId],
-        recording: false,
-      };
-      
-      // Add prompts if available
-      if (supportsPrompts && prompts.length > 0) {
-        initialParameters.prompts = prompts;
-      }
-      
-      // Add reference images if available
-      if (imageInputNodes.length > 0) {
-        const images = imageInputNodes
-          .map(n => n.data.config?.path as string)
-          .filter(Boolean);
-        if (images.length > 0) {
-          initialParameters.images = images;
-        }
-      }
-      
-      console.log("[OpenScope] Initial parameters being sent:", JSON.stringify(initialParameters, null, 2));
-      console.log("[OpenScope] Local stream for WebRTC:", localStream ? "available" : "NOT AVAILABLE");
-      console.log("[OpenScope] Video tracks:", localStream?.getVideoTracks().length);
-      
-      if (!localStream) {
-        alert("Please upload a video in the Video Input node first");
-        setIsLoading(false);
-        return;
-      }
-      
-      // Start WebRTC - localStream will be sent if user uploaded video in Preview panel
-      await startWebRTC((stream) => {
-        setRemoteStream(stream);
-        setIsStreaming(true);
-      }, initialParameters, localStream);
-      
-    } catch (err) {
-      console.error("Failed to start stream:", err);
-      alert("Failed to start stream: " + (err instanceof Error ? err.message : "Unknown error"));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isScopeConnected, nodes, loadPipeline, startWebRTC, connectToCloud]);
-
-  const handleStopStream = useCallback(() => {
-    stopWebRTC();
-    setIsStreaming(false);
-    setRemoteStream(null);
-  }, [stopWebRTC]);
-
   return (
-    <div className="h-screen w-screen flex flex-col bg-background overflow-hidden">
-      <Header
-        onOpenTemplates={() => setShowTemplates(true)}
-        onOpenSave={() => setShowSave(true)}
-        onOpenOpen={() => setShowOpen(true)}
-        onOpenAI={() => setShowAI(true)}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        sidebarOpen={sidebarOpen}
-        user={user}
-        onAuthClick={() => setShowAuth(true)}
-        isScopeConnected={isScopeConnected}
-        isStreaming={isStreaming}
-        onStartStream={handleStartStream}
-        onStopStream={handleStopStream}
-      />
-      <div className="flex-1 flex min-h-0 w-full">
-        {sidebarOpen && <NodePalette />}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
-          <NodeCanvas 
-            localStream={localStream} 
-            remoteStream={remoteStream}
-            isStreaming={isStreaming}
-          />
-         
+    <div className="min-h-screen bg-[hsl(220,13%,6%)] text-[hsl(220,10%,96%)] flex flex-col">
+      {/* Header */}
+      <header className="border-b border-[hsl(220,10%,18%)]">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-lg">OpenScope</span>
+          </div>
+          <nav className="flex items-center gap-6">
+            <Link href="#features" className="text-sm text-[hsl(220,9%,55%)] hover:text-[hsl(220,10%,96%)] transition-colors">Features</Link>
+            <a href="https://github.com/nwakakukaks/openscope" target="_blank" rel="noopener noreferrer" className="text-sm text-[hsl(220,9%,55%)] hover:text-[hsl(220,10%,96%)] transition-colors">GitHub</a>
+            <Link href="/app" className="px-4 py-2 bg-[hsl(217,91%,60%)] text-white rounded-lg text-sm font-medium hover:bg-[hsl(217,91%,60%)/90] transition-colors">
+              Try Now
+            </Link>
+          </nav>
         </div>
-        {selectedNode && <PropertiesPanel />}
-      </div>
+      </header>
 
-      {/* Modals */}
-      <TemplateModal
-        isOpen={showTemplates}
-        onClose={() => setShowTemplates(false)}
-      />
+      {/* Hero */}
+      <section className="flex-1 py-24 px-6">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-5xl font-bold mb-6 leading-tight">
+            Build Live Video Experiences<br />
+            <span className="text-[hsl(217,91%,60%)]">Without Writing Code</span>
+          </h1>
+          <p className="text-xl text-[hsl(220,9%,55%)] mb-10 max-w-2xl mx-auto">
+            OpenScope is a visual node-based plugin builder for Scope.
+            Connect nodes, adjust parameters, and export ready-to-use plugins in minutes.
+          </p>
+          <div className="flex items-center justify-center gap-4">
+            <Link href="/app" className="px-8 py-3 bg-[hsl(217,91%,60%)] text-white rounded-lg text-base font-medium hover:bg-[hsl(217,91%,60%)/90] transition-colors">
+              Start Building
+            </Link>
+            <a href="https://github.com/nwakakukaks/openscope" target="_blank" rel="noopener noreferrer" className="px-8 py-3 border border-[hsl(220,10%,18%)] text-[hsl(220,10%,96%)] rounded-lg text-base font-medium hover:bg-[hsl(220,10%,14%)] transition-colors">
+              View on GitHub
+            </a>
+          </div>
+        </div>
 
-      <SaveModal
-        isOpen={showSave}
-        onClose={() => setShowSave(false)}
-        onSave={handleSave}
-        loading={saveLoading}
-      />
+        {/* Hero Image Placeholder */}
+        <div className="max-w-5xl mx-auto mt-16">
+          <div className="aspect-video rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)] flex items-center justify-center">
+            <span className="text-[hsl(220,9%,55%)]">OpenScope Editor Preview</span>
+          </div>
+        </div>
+      </section>
 
-      <OpenModal
-        isOpen={showOpen}
-        onClose={() => setShowOpen(false)}
-      />
+      {/* Features */}
+      <section id="features" className="py-20 px-6 border-t border-[hsl(220,10%,18%)]">
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-3xl font-bold text-center mb-4">Features</h2>
+          <p className="text-[hsl(220,9%,55%)] text-center mb-16 max-w-2xl mx-auto">
+            Everything you need to create video processing plugins visually
+          </p>
 
-      <AIAssistant
-        isOpen={showAI}
-        onClose={() => setShowAI(false)}
-      />
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Feature 1 */}
+            <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+                <PictureInPicture/>
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Video to AI Output</h3>
+              <p className="text-sm text-[hsl(220,9%,55%)]">
+                Upload video files, process them through your custom pipeline, and get the output ready for Daydream Scope.
+              </p>
+            </div>
 
-      <AuthModal
-        isOpen={showAuth}
-        onClose={() => setShowAuth(false)}
-        onAuthSuccess={() => {}}
-      />
+            {/* Feature 2 */}
+            <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+ <Braces />
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Live Code Blocks</h3>
+              <p className="text-sm text-[hsl(220,9%,55%)]">
+                Toggle to see Python code that updates instantly as you adjust parameters. Always see what runs.
+              </p>
+            </div>
+
+            {/* Feature 3 */}
+            <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+                <FolderDown/>
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Plugin Export</h3>
+              <p className="text-sm text-[hsl(220,9%,55%)]">
+                One-click export generates a valid Daydream-compatible plugin ZIP with the correct folder structure.
+              </p>
+            </div>
+
+            {/* Feature 4 */}
+            <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
+            <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+               <BrainCog/>
+              </div>
+              <h3 className="text-lg font-semibold mb-2">AI Processor (Beta)</h3>
+              <p className="text-sm text-[hsl(220,9%,55%)]">
+                Describe what you want, and AI generates the Python code for your custom processor.
+              </p>
+            </div>
+
+            {/* Feature 5 */}
+            <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+<Library/>
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Growing Library</h3>
+              <p className="text-sm text-[hsl(220,9%,55%)]">
+                Start with 2 pre-processors and 2 post-processors. More coming soon!
+              </p>
+            </div>
+
+            {/* Feature 6 */}
+            <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+               <Workflow/> 
+              </div>
+              <h3 className="text-lg font-semibold mb-2">Visual Builder</h3>
+              <p className="text-sm text-[hsl(220,9%,55%)]">
+                Drag and drop nodes to build pipelines. No code required.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+
+      {/* Footer */}
+      <footer className="py-6 px-6 border-t border-[hsl(220,10%,18%)]">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+
+              <span className="font-semibold">OpenScope</span>
+            </div>
+
+            <div className="flex items-center gap-6">
+              <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-sm text-[hsl(220,9%,55%)] hover:text-[hsl(220,10%,96%)] transition-colors">GitHub</a>
+              <a href="#" className="text-sm text-[hsl(220,9%,55%)] hover:text-[hsl(220,10%,96%)] transition-colors">Documentation</a>
+              <a href="#" className="text-sm text-[hsl(220,9%,55%)] hover:text-[hsl(220,10%,96%)] transition-colors">Community</a>
+            </div>
+
+            <p className="text-sm text-[hsl(220,9%,55%)]">
+              copyright 2026 Openscope
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

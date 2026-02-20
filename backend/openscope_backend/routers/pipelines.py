@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from fastapi import APIRouter, HTTPException
 import httpx
 
+from ..config import settings
+
 router = APIRouter()
 
 
@@ -28,15 +30,17 @@ class PipelinesResponse(BaseModel):
 
 
 @router.get("/pipelines", response_model=PipelinesResponse)
-async def get_pipelines(scope_url: str = "http://localhost:8000"):
+async def get_pipelines(scope_url: Optional[str] = None):
     """Fetch available pipelines from a Scope server.
 
     Args:
-        scope_url: The URL of the Scope server (default: http://localhost:8000)
+        scope_url: The URL of the Scope server (defaults to settings.scope_api_url)
 
     Returns:
         List of available pipelines with their configurations
     """
+    if scope_url is None:
+        scope_url = settings.scope_api_url
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(
@@ -67,9 +71,11 @@ async def get_pipelines(scope_url: str = "http://localhost:8000"):
 
 @router.get("/pipelines/list")
 async def list_pipelines_simple(
-    scope_url: str = "http://localhost:8000",
+    scope_url: str = None,
 ) -> List[PipelineInfo]:
     """Get a simplified list of pipelines."""
+    if scope_url is None:
+        scope_url = settings.scope_api_url
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(

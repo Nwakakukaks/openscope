@@ -155,11 +155,7 @@ function parsePluginFile(content: string): Array<{ type: string; position: { x: 
     inputType = 'videoInput';
   }
   
-  if (usage === 'preprocessor') {
-    outputType = 'preprocessorOutput';
-  } else if (usage === 'postprocessor') {
-    outputType = 'postprocessorOutput';
-  }
+  outputType = 'pipelineOutput';
 
   nodes.push({
     type: inputType,

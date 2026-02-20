@@ -18,7 +18,8 @@ import {
   WifiOff,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
-import { generatePlugin } from "@/lib/codeGenerator";
+import { generatePluginFiles } from "@/lib/codeGenerator";
+import JSZip from "jszip";
 
 interface HeaderProps {
   onOpenTemplates: () => void;
@@ -53,13 +54,19 @@ export default function Header({
   const nodes = useGraphStore((state) => state.nodes);
   const edges = useGraphStore((state) => state.edges);
 
-  const handleExport = () => {
-    const pluginCode = generatePlugin(nodes, edges);
-    const blob = new Blob([pluginCode], { type: "text/plain" });
+  const handleExport = async () => {
+    const files = generatePluginFiles(nodes, edges);
+    const zip = new JSZip();
+    
+    for (const [filename, content] of Object.entries(files)) {
+      zip.file(filename, content);
+    }
+    
+    const blob = await zip.generateAsync({ type: "blob" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "my_plugin.py";
+    a.download = "my_plugin.zip";
     a.click();
     URL.revokeObjectURL(url);
     setShowExportMenu(false);
@@ -88,7 +95,7 @@ export default function Header({
         <div className="h-8 w-px bg-border mx-2" />
         <nav className="flex items-center gap-1">
           <ActionButton icon={FolderPlus} label="Templates" onClick={onOpenTemplates} />
-          <ActionButton icon={FolderOpen} label="Open" onClick={onOpenOpen} />
+          {/* <ActionButton icon={FolderOpen} label="Open" onClick={onOpenOpen} /> */}
           <ActionButton icon={Save} label="Save" onClick={onOpenSave} />
         </nav>
       </div>

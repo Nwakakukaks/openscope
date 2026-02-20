@@ -24,10 +24,11 @@ interface GraphState {
   selectedNode: string | null;
   
   // Node operations
-  addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>) => void;
+  addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>, options?: { selectNode?: boolean }) => void;
   addNodesWithEdges: (nodes: Array<{ type: string; position: { x: number; y: number }; config?: Record<string, unknown> }>, edges?: Array<{ source: number; target: number }>) => void;
   addOutputNode: () => void;
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
+  updateNodeType: (nodeId: string, type: string, config?: Record<string, unknown>) => void;
   deleteNode: (nodeId: string) => void;
   selectNode: (nodeId: string | null) => void;
   clearAll: () => void;
@@ -124,6 +125,50 @@ export const nodeDefaults: Record<string, Partial<NodeData>> = {
   vignette: {
     label: "Vignette",
     config: { intensity: 0.5, smoothness: 0.5 },
+  },
+  // VFX Pack effects (from scope-vfx)
+  chromatic: {
+    label: "Chromatic Aberration",
+    config: { enabled: true, intensity: 0.3, angle: 0 },
+  },
+  vhs: {
+    label: "VHS / Retro CRT",
+    config: { enabled: false, scanLineIntensity: 0.3, scanLineCount: 100, noise: 0.1, tracking: 0.2 },
+  },
+  halftone: {
+    label: "Halftone",
+    config: { enabled: false, dotSize: 8, sharpness: 0.7 },
+  },
+  // Settings nodes - control pipeline parameters
+  noiseSettings: {
+    label: "Noise Settings",
+    config: { noiseScale: 0.7, noiseController: true },
+  },
+  vaceSettings: {
+    label: "VACE Settings",
+    config: { vaceEnabled: false, vaceContextScale: 1.0, useInputVideo: false },
+  },
+  resolutionSettings: {
+    label: "Resolution",
+    config: { width: 512, height: 512 },
+  },
+  advancedSettings: {
+    label: "Advanced Settings",
+    config: { denoisingSteps: 30, quantization: "", kvCacheAttentionBias: 0.0 },
+  },
+  loraSettings: {
+    label: "LoRA Adapters",
+    config: { loras: [] },
+  },
+  // Custom effect node - user defines parameters and code
+  custom: {
+    label: "Custom Effect",
+    config: { 
+      name: "My Effect",
+      params: [], // [{ name, type, default, min, max, description }]
+      code: "# Define your effect processing here\n# frames: tensor of shape (T, H, W, C) in [0, 1] range\n# Return processed frames\nreturn frames",
+      isCodeMode: true,
+    },
   },
   pipelineOutput: {
     label: "Pipeline Output",
@@ -351,30 +396,43 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   edges: [],
   selectedNode: null,
 
-  addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>) => {
+  addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>, options?: { selectNode?: boolean }) => {
     let defaults = nodeDefaults[type] || { label: type, config: {} };
+    let labelOverride: string | undefined;
     
     // Handle pipeline_ type (e.g., pipeline_animateDiff)
     if (type.startsWith("pipeline_")) {
       const pipelineId = type.replace("pipeline_", "");
       defaults = {
-        label: pipelineId,
-        config: { pipelineId, remoteInference: false },
+        label: "Main Pipeline",
+        // config: { pipelineId, remoteInference: false },
+        config: { pipelineId },
       };
+    }
+
+  
+    if (type === "parameters" && config?.createNewKind) {
+      labelOverride = config.createNewKind === "preprocessor" ? "Pre-processor" : "Post-processor";
     }
     
     const newNode: Node<NodeData> = {
       id: uuidv4(),
       type: "scopeNode",
       position,
-      selected: true,
+      selected: options?.selectNode !== false, // Default to true unless explicitly set to false
       data: {
-        label: defaults.label || type,
+        label: labelOverride || defaults.label || type,
         type,
         config: { ...defaults.config, ...config },
       },
     };
-    set({ nodes: [...get().nodes, newNode], selectedNode: newNode.id });
+    
+    if (options?.selectNode === false) {
+      // Don't change selection
+      set({ nodes: [...get().nodes, newNode] });
+    } else {
+      set({ nodes: [...get().nodes, newNode], selectedNode: newNode.id });
+    }
   },
 
   addNodesWithEdges: (nodes, edges) => {
@@ -414,7 +472,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     const isPreprocessor = (type: string) => 
       ["segmentation", "depthEstimation", "backgroundRemoval"].includes(type);
     const isPostprocessor = (type: string) => 
-      ["colorGrading", "upscaling", "denoising", "styleTransfer", "vignette", "kaleido", "blend", "mirror", "brightness", "contrast", "blur", "mask"].includes(type);
+      ["colorGrading", "upscaling", "denoising", "styleTransfer", "vignette", "kaleido", "blend", "mirror", "brightness", "contrast", "blur", "mask", "chromatic", "vhs", "halftone"].includes(type);
     const isInputNode = (type: string) => 
       ["videoInput", "textPrompt", "imageInput", "parameters"].includes(type);
     const isOutputNode = (type: string) => 
@@ -597,6 +655,24 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           ? { ...node, data: { ...node.data, config: { ...node.data.config, ...config } } }
           : node
       ),
+    });
+  },
+
+  updateNodeType: (nodeId: string, type: string, config?: Record<string, unknown>) => {
+    set({
+      nodes: get().nodes.map((node) => {
+        if (node.id !== nodeId) return node;
+        const defaults = nodeDefaults[type] || { label: type, config: {} };
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            type,
+            label: defaults.label || type,
+            config: { ...(defaults.config || {}), ...(config || {}) },
+          },
+        };
+      }),
     });
   },
 
