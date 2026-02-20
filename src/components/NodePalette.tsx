@@ -108,6 +108,7 @@ export default function NodePalette() {
       }
       const data = await response.json();
       setPipelines(data);
+      console.log(data)
     } catch (error) {
       console.error("Failed to fetch pipelines:", error);
       setPipelinesError("Could not connect to Scope server");
@@ -136,13 +137,25 @@ export default function NodePalette() {
     e.dataTransfer.effectAllowed = "move";
   };
 
-  const pipelineNodes = pipelines.map((p) => ({
-    type: `pipeline_${p.pipeline_id}`,
-    label: p.pipeline_name,
-    icon: <Zap className="w-4 h-4" />,
-    description: p.pipeline_description || `${p.supported_modes?.join(", ") || "video"} mode`,
-    pipelineId: p.pipeline_id,
-  }));
+  const isPreprocessor = (p: PipelineInfo): boolean => {
+    const id = p.pipeline_id;
+    return id === "yolo_mask" || id === "kaleido-scope-pre";
+  };
+
+  const isPostprocessor = (p: PipelineInfo): boolean => {
+    const id = p.pipeline_id;
+    return id === "bloom" || id === "cosmic-vfx" || id === "vfx-pack" || id === "kaleido-scope-post";
+  };
+
+  const pipelineNodes = pipelines
+    .filter(p => !isPreprocessor(p) && !isPostprocessor(p))
+    .map((p) => ({
+      type: `pipeline_${p.pipeline_id}`,
+      label: p.pipeline_name,
+      icon: <Zap className="w-4 h-4" />,
+      description: p.pipeline_description || `${p.supported_modes?.join(", ") || "video"} mode`,
+      pipelineId: p.pipeline_id,
+    }));
 
   const getInputNodes = () => {
     return [
@@ -154,26 +167,39 @@ export default function NodePalette() {
 
   const getOutputNodes = () => {
     return [
-      { type: "pipelineOutput", label: "Main Pipeline", icon: <Zap className="w-4 h-4" />, description: "Main output", enabled: usage === "main" || usage === "all" },
-      // { type: "preprocessorOutput", label: "Preprocessor", icon: <Layers className="w-4 h-4" />, description: "Pre-process", enabled: usage === "preprocessor" || usage === "all" },
-      // { type: "postprocessorOutput", label: "Postprocessor", icon: <Play className="w-4 h-4" />, description: "Post-process", enabled: usage === "postprocessor" || usage === "all" },
+      { type: "pipelineOutput", label: "Main Pipeline", icon: <Zap className="w-4 h-4" />, description: "Main output", enabled: true },
     ];
   };
 
   const getPreprocessorNodes = () => {
+    const preprocessorPipelines = pipelines.filter(isPreprocessor);
+    
     return [
-      { type: "customPreprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "preprocessor" },
-      { type: "kaleidoscope", label: "Kaleidoscope", icon: <Hexagon className="w-4 h-4" />, description: "GPU kaleidoscope/mirror effect", enabled: true },
-      { type: "yoloMask", label: "YOLO Mask", icon: <Scan className="w-4 h-4" />, description: "YOLO26 segmentation for VACE masks", enabled: true },
+      { type: "pipeline_customPreprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "preprocessor" as const },
+      ...preprocessorPipelines.map(p => ({
+        type: `pipeline_${p.pipeline_id}`,
+        label: p.pipeline_name,
+        icon: <Hexagon className="w-4 h-4" />,
+        description: p.pipeline_description || "Preprocessor pipeline",
+        enabled: true,
+        pipelineId: p.pipeline_id,
+      })),
     ];
   };
 
   const getPostprocessorNodes = () => {
+    const postprocessorPipelines = pipelines.filter(isPostprocessor);
+    
     return [
-      { type: "customPostprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "postprocessor" },
-      { type: "bloom", label: "Bloom", icon: <SunMedium className="w-4 h-4" />, description: "Bloom/glow effect", enabled: true },
-      { type: "cosmicVFX", label: "Cosmic VFX", icon: <Sparkles className="w-4 h-4" />, description: "30+ visual effects", enabled: true },
-      { type: "vfxPack", label: "VFX Pack", icon: <Tv className="w-4 h-4" />, description: "Chromatic, VHS, Halftone", enabled: true },
+      { type: "pipeline_customPostprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "postprocessor" as const },
+      ...postprocessorPipelines.map(p => ({
+        type: `pipeline_${p.pipeline_id}`,
+        label: p.pipeline_name,
+        icon: <Sparkles className="w-4 h-4" />,
+        description: p.pipeline_description || "Postprocessor pipeline",
+        enabled: true,
+        pipelineId: p.pipeline_id,
+      })),
     ];
   };
 

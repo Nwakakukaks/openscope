@@ -11,7 +11,13 @@ const EFFECT_NODES = [
   "segmentation", "depthEstimation", "backgroundRemoval", "yoloMask",
   "colorGrading", "upscaling", "denoising", "styleTransfer", "mask",
   "chromatic", "vhs", "halftone", "bloom", "cosmicVFX", "vfxPack",
+  "pipeline_kaleido-scope", "pipeline_yolo_mask", "pipeline_bloom", "pipeline_cosmic-vfx", "pipeline_vfx-pack",
+  "pipeline_customPreprocessor", "pipeline_customPostprocessor",
   "custom" // User-defined custom effects
+];
+
+const PIPELINE_EFFECT_IDS = [
+  "kaleido-scope", "yolo_mask", "bloom", "cosmic-vfx", "vfx-pack", "customPreprocessor", "customPostprocessor"
 ];
 
 const KALEIDO_HELPER = `def _apply_kaleido(video, slices=6, rotation=0, zoom=1.0):
@@ -1313,7 +1319,17 @@ function generateSchemaFields(nodes: any[], edges: any[]): string {
 function getNodeOrder(nodes: any[], edges: any[]): any[] {
   const outputNode = nodes.find(n => n.data.type === "pipelineOutput");
   
-  if (!outputNode) return nodes.filter(n => EFFECT_NODES.includes(n.data.type));
+  const isEffectNode = (type: string) => {
+    if (EFFECT_NODES.includes(type)) return true;
+    // Handle pipeline_ prefixed types
+    if (type.startsWith("pipeline_")) {
+      const pipelineId = type.replace("pipeline_", "");
+      return PIPELINE_EFFECT_IDS.includes(pipelineId);
+    }
+    return false;
+  };
+  
+  if (!outputNode) return nodes.filter(n => isEffectNode(n.data.type));
   
   const nodeMap = new Map(nodes.map(n => [n.id, n]));
   const order: any[] = [];
@@ -1329,7 +1345,7 @@ function getNodeOrder(nodes: any[], edges: any[]): any[] {
     }
     
     const node = nodeMap.get(nodeId);
-    if (node && EFFECT_NODES.includes(node.data.type)) {
+    if (node && isEffectNode(node.data.type)) {
       order.push(node);
     }
   }
@@ -1419,6 +1435,25 @@ function generatePipelineInit(nodes: any[], edges: any[]): string {
         video = [frames[i] for i in range(frames.shape[0])]`);
     }
 
+    if (type === "pipeline_kaleido-scope") {
+      lines.push(`    # Kaleidoscope pipeline
+    if kwargs.get("kaleidoscope_enabled", True):
+        frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        frames = _apply_kaleidoscope(
+            frames,
+            enabled=True,
+            mix=kwargs.get("kaleidoscope_mix", 1.0),
+            mirror_mode=kwargs.get("kaleidoscope_mirror_mode", "radial"),
+            rotational_enabled=kwargs.get("kaleidoscope_rotational_enabled", True),
+            rotational_slices=kwargs.get("kaleidoscope_slices", 6),
+            rotation_deg=kwargs.get("kaleidoscope_rotation", 0.0),
+            zoom=kwargs.get("kaleidoscope_zoom", 1.0),
+            warp=kwargs.get("kaleidoscope_warp", 0.0),
+        )
+        video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
     if (type === "vignette") {
       lines.push(`    # Vignette effect
     intensity = float(kwargs.get("vignette_intensity", ${config.intensity ?? 0.5}))
@@ -1470,6 +1505,22 @@ function generatePipelineInit(nodes: any[], edges: any[]): string {
     video = [frames[i] for i in range(frames.shape[0])]`);
     }
 
+    if (type === "pipeline_bloom") {
+      lines.push(`    # Bloom pipeline
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    frames = _apply_bloom(
+        frames,
+        threshold=kwargs.get("bloom_threshold", 0.8),
+        soft_knee=kwargs.get("bloom_soft_knee", 0.5),
+        intensity=kwargs.get("bloom_intensity", 1.0),
+        radius=kwargs.get("bloom_radius", 8),
+        downsample=kwargs.get("bloom_downsample", 1),
+        debug=kwargs.get("bloom_debug", False),
+    )
+    video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
     if (type === "cosmicVFX") {
       lines.push(`    # Cosmic VFX effect
     frames = torch.stack([f.squeeze(0) for f in video], dim=0)
@@ -1504,6 +1555,40 @@ function generatePipelineInit(nodes: any[], edges: any[]): string {
     video = [frames[i] for i in range(frames.shape[0])]`);
     }
 
+    if (type === "pipeline_cosmic-vfx") {
+      lines.push(`    # Cosmic VFX pipeline
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    frames = _apply_cosmic_vfx(
+        frames,
+        enable_glitch=kwargs.get("cosmic_enable_glitch", True),
+        glitch_shader=kwargs.get("cosmic_glitch_shader", "basic"),
+        glitch_intensity=kwargs.get("cosmic_glitch_intensity", 1.0),
+        enable_retro=kwargs.get("cosmic_enable_retro", True),
+        retro_shader=kwargs.get("cosmic_retro_shader", "vhs"),
+        retro_intensity=kwargs.get("cosmic_retro_intensity", 1.0),
+        enable_distortion=kwargs.get("cosmic_enable_distortion", True),
+        distortion_shader=kwargs.get("cosmic_distortion_shader", "wave"),
+        distortion_intensity=kwargs.get("cosmic_distortion_intensity", 1.0),
+        enable_color=kwargs.get("cosmic_enable_color", True),
+        color_shader=kwargs.get("cosmic_color_shader", "hueshift"),
+        color_intensity=kwargs.get("cosmic_color_intensity", 1.0),
+        enable_edge=kwargs.get("cosmic_enable_edge", True),
+        edge_shader=kwargs.get("cosmic_edge_shader", "sobel"),
+        edge_intensity=kwargs.get("cosmic_edge_intensity", 1.0),
+        enable_blur=kwargs.get("cosmic_enable_blur", True),
+        blur_shader=kwargs.get("cosmic_blur_shader", "gaussian"),
+        blur_intensity=kwargs.get("cosmic_blur_intensity", 1.0),
+        intensity=kwargs.get("cosmic_intensity", 1.0),
+        speed=kwargs.get("cosmic_speed", 1.0),
+        hue_shift=kwargs.get("cosmic_hue_shift", 0.0),
+        saturation=kwargs.get("cosmic_saturation", 1.0),
+        brightness=kwargs.get("cosmic_brightness", 1.0),
+        blend_mode=kwargs.get("cosmic_blend_mode", "normal"),
+    )
+    video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
     if (type === "vfxPack") {
       lines.push(`    # VFX Pack effect
     frames = torch.stack([f.squeeze(0) for f in video], dim=0)
@@ -1521,6 +1606,27 @@ function generatePipelineInit(nodes: any[], edges: any[]): string {
         halftone_enabled=kwargs.get("vfx_halftone_enabled", ${config.halftoneEnabled === true}),
         halftone_dot_size=kwargs.get("vfx_halftone_dot_size", ${config.halftoneDotSize ?? 8}),
         halftone_sharpness=kwargs.get("vfx_halftone_sharpness", ${config.halftoneSharpness ?? 0.7}),
+    )
+    video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
+    if (type === "pipeline_vfx-pack") {
+      lines.push(`    # VFX Pack pipeline
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    frames = _apply_vfx_pack(
+        frames,
+        chromatic_enabled=kwargs.get("vfx_chromatic_enabled", True),
+        chromatic_intensity=kwargs.get("vfx_chromatic_intensity", 0.3),
+        chromatic_angle=kwargs.get("vfx_chromatic_angle", 0.0),
+        vhs_enabled=kwargs.get("vfx_vhs_enabled", True),
+        scan_line_intensity=kwargs.get("vfx_scan_line_intensity", 0.3),
+        scan_line_count=kwargs.get("vfx_scan_line_count", 100),
+        vhs_noise=kwargs.get("vfx_noise", 0.1),
+        tracking_distortion=kwargs.get("vfx_tracking", 0.2),
+        halftone_enabled=kwargs.get("vfx_halftone_enabled", True),
+        halftone_dot_size=kwargs.get("vfx_halftone_dot_size", 8),
+        halftone_sharpness=kwargs.get("vfx_halftone_sharpness", 0.7),
     )
     video = [frames[i] for i in range(frames.shape[0])]`);
     }
@@ -1638,18 +1744,19 @@ export function generatePlugin(nodes: any[], edges: any[]): string {
   const schemaFields = generateSchemaFields(nodes, edges);
   const pipelineInit = generatePipelineInit(nodes, edges);
   
-  const processingNodes = nodes.filter((n) => EFFECT_NODES.includes(n.data.type));
+  const hasPipelinePrefix = (type: string) => type.startsWith("pipeline_");
+  const processingNodes = nodes.filter((n) => EFFECT_NODES.includes(n.data.type) || hasPipelinePrefix(n.data.type));
   const needsKaleido = processingNodes.some(n => n.data.type === "kaleido");
-  const needsKaleidoscope = processingNodes.some(n => n.data.type === "kaleidoscope");
-  const needsYoloMask = processingNodes.some(n => n.data.type === "yoloMask");
+  const needsKaleidoscope = processingNodes.some(n => n.data.type === "kaleidoscope" || n.data.type === "pipeline_kaleido-scope");
+  const needsYoloMask = processingNodes.some(n => n.data.type === "yoloMask" || n.data.type === "pipeline_yolo_mask");
   const needsVignette = processingNodes.some(n => n.data.type === "vignette");
   const needsColorGrading = processingNodes.some(n => n.data.type === "colorGrading");
   const needsChromatic = processingNodes.some(n => n.data.type === "chromatic");
   const needsVHS = processingNodes.some(n => n.data.type === "vhs");
   const needsHalftone = processingNodes.some(n => n.data.type === "halftone");
-  const needsBloom = processingNodes.some(n => n.data.type === "bloom");
-  const needsCosmicVFX = processingNodes.some(n => n.data.type === "cosmicVFX");
-  const needsVfxPack = processingNodes.some(n => n.data.type === "vfxPack");
+  const needsBloom = processingNodes.some(n => n.data.type === "bloom" || n.data.type === "pipeline_bloom");
+  const needsCosmicVFX = processingNodes.some(n => n.data.type === "cosmicVFX" || n.data.type === "pipeline_cosmic-vfx");
+  const needsVfxPack = processingNodes.some(n => n.data.type === "vfxPack" || n.data.type === "pipeline_vfx-pack");
 
   let modesConfig = "";
   if (mode === "video") {
@@ -1820,4 +1927,195 @@ def register_pipelines(register):
 `,
     [`src/${srcDir}/pipeline.py`]: pluginCode,
   };
+}
+
+export function generateNodeCode(nodeType: string, config: Record<string, unknown>): string {
+  const EFFECT_TEMPLATES: Record<string, (config: Record<string, unknown>) => string> = {
+    brightness: (cfg) => `import torch
+import cv2
+
+def process_frames(frames, **kwargs):
+    """Adjust brightness of video frames"""
+    value = kwargs.get("brightness_value", ${cfg.value ?? 0})
+    alpha = 1.0 + (value / 100)
+    result = []
+    for frame in frames:
+        # frame is (H, W, C) in [0, 255] range
+        adjusted = cv2.convertScaleAbs(frame, alpha=alpha, beta=0)
+        result.append(adjusted)
+    return result`,
+    
+    contrast: (cfg) => `import torch
+import cv2
+
+def process_frames(frames, **kwargs):
+    """Adjust contrast of video frames"""
+    value = kwargs.get("contrast_value", ${cfg.value ?? 1})
+    result = []
+    for frame in frames:
+        adjusted = cv2.convertScaleAbs(frame, alpha=value, beta=0)
+        result.append(adjusted)
+    return result`,
+    
+    blur: (cfg) => `import torch
+import cv2
+
+def process_frames(frames, **kwargs):
+    """Apply Gaussian blur to video frames"""
+    radius = kwargs.get("blur_radius", ${cfg.radius ?? 5})
+    radius = radius if radius % 2 == 1 else radius + 1
+    result = []
+    for frame in frames:
+        blurred = cv2.GaussianBlur(frame, (radius, radius), 0)
+        result.append(blurred)
+    return result`,
+    
+    mirror: (cfg) => `import torch
+import cv2
+
+def process_frames(frames, **kwargs):
+    """Flip video frames horizontally, vertically, or both"""
+    mode = kwargs.get("mirror_mode", "${cfg.mode ?? 'horizontal'}")
+    flip_code = {"horizontal": 1, "vertical": 0, "both": -1}.get(mode, 1)
+    result = []
+    for frame in frames:
+        flipped = cv2.flip(frame, flip_code)
+        result.append(flipped)
+    return result`,
+    
+    kaleidoscope: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """Kaleidoscope/mirror symmetry effect"""
+    slices = kwargs.get("kaleidoscope_slices", ${cfg.rotationalSlices ?? 6})
+    rotation = kwargs.get("kaleidoscope_rotation", ${cfg.rotationDeg ?? 0})
+    zoom = kwargs.get("kaleidoscope_zoom", ${cfg.zoom ?? 1.0})
+    mix = kwargs.get("kaleidoscope_mix", ${cfg.mix ?? 1.0})
+    # Implementation uses torch for GPU acceleration
+    return frames  # Placeholder`,
+    
+    chromatic: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """RGB channel displacement effect"""
+    enabled = kwargs.get("chromatic_enabled", ${cfg.enabled !== false})
+    if not enabled:
+        return frames
+    intensity = kwargs.get("chromatic_intensity", ${cfg.intensity ?? 0.3})
+    angle = kwargs.get("chromatic_angle", ${cfg.angle ?? 0}) * np.pi / 180
+    h, w = frames[0].shape[:2]
+    dx = int(intensity * 20 * np.cos(angle))
+    dy = int(intensity * 20 * np.sin(angle))
+    result = []
+    for frame in frames:
+        b = frame[:, :, 0]
+        g = frame[:, :, 1]
+        r = frame[:, :, 2]
+        b_shift = np.clip(np.pad(b, ((abs(dy), 0), (abs(dx), 0)), mode='edge')[:h, :w], 0, 255).astype(np.uint8)
+        r_shift = np.clip(np.pad(r, ((abs(dy), 0), (abs(dx), 0)), mode='edge')[:h, :w], 0, 255).astype(np.uint8)
+        result.append(np.stack([b_shift, g, r_shift], axis=-1))
+    return result`,
+    
+    vhs: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """Retro VHS / CRT effect"""
+    enabled = kwargs.get("vhs_enabled", ${cfg.enabled === true})
+    if not enabled:
+        return frames
+    scan_intensity = kwargs.get("scan_line_intensity", ${cfg.scanLineIntensity ?? 0.3})
+    scan_count = kwargs.get("scan_line_count", ${cfg.scanLineCount ?? 100})
+    noise = kwargs.get("vhs_noise", ${cfg.noise ?? 0.1})
+    tracking = kwargs.get("tracking_distortion", ${cfg.tracking ?? 0.2})
+    result = []
+    for frame in frames:
+        # Scanlines
+        for i in range(0, frame.shape[0], scan_count):
+            frame[i:i+1, :, :] = frame[i:i+1, :, :] * (1 - scan_intensity)
+        # Noise
+        if noise > 0:
+            noise_frame = np.random.normal(0, noise * 255, frame.shape).astype(np.uint8)
+            frame = cv2.add(frame, noise_frame)
+        result.append(frame)
+    return result`,
+    
+    halftone: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """Newspaper dot pattern effect"""
+    enabled = kwargs.get("halftone_enabled", ${cfg.enabled === true})
+    if not enabled:
+        return frames
+    dot_size = kwargs.get("halftone_dot_size", ${cfg.dotSize ?? 8})
+    sharpness = kwargs.get("halftone_sharpness", ${cfg.sharpness ?? 0.7})
+    # Implementation uses torch for GPU acceleration
+    return frames  # Placeholder`,
+    
+    vignette: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """Darken edges of frames for cinematic look"""
+    intensity = kwargs.get("vignette_intensity", ${cfg.intensity ?? 0.5})
+    smoothness = kwargs.get("vignette_smoothness", ${cfg.smoothness ?? 0.5})
+    result = []
+    for frame in frames:
+        rows, cols = frame.shape[:2]
+        kernel_x = cv2.getGaussianKernel(cols, cols * smoothness)
+        kernel_y = cv2.getGaussianKernel(rows, rows * smoothness)
+        kernel = kernel_y * kernel_x.T
+        mask = kernel / kernel.max()
+        mask = cv2.resize(mask, (cols, rows))
+        vignetted = (frame * mask[..., np.newaxis] * (1 - intensity) + frame * intensity).astype(np.uint8)
+        result.append(vignetted)
+    return result`,
+    
+    bloom: (cfg) => `import torch
+import torch.nn.functional as F
+
+def process_frames(frames, **kwargs):
+    """Bloom/glow effect"""
+    threshold = kwargs.get("bloom_threshold", ${cfg.threshold ?? 0.8})
+    intensity = kwargs.get("bloom_intensity", ${cfg.intensity ?? 1.0})
+    radius = kwargs.get("bloom_radius", ${cfg.radius ?? 8})
+    # Implementation uses torch for GPU acceleration
+    return frames  # Placeholder`,
+    
+    colorGrading: (cfg) => `import torch
+import cv2
+
+def process_frames(frames, **kwargs):
+    """Professional color correction"""
+    temp = kwargs.get("color_temperature", ${cfg.temperature ?? 0})
+    tint = kwargs.get("color_tint", ${cfg.tint ?? 0})
+    sat = kwargs.get("color_saturation", ${cfg.saturation ?? 0})
+    contrast = kwargs.get("color_contrast", ${cfg.contrast ?? 0})
+    result = []
+    for frame in frames:
+        # Temperature (red/blue shift)
+        if temp != 0:
+            frame = frame.astype(np.float32)
+            frame[:, :, 0] = frame[:, :, 0] * (1 + temp * 0.01)
+            frame[:, :, 2] = frame[:, :, 2] * (1 - temp * 0.01)
+            frame = np.clip(frame, 0, 255).astype(np.uint8)
+        result.append(frame)
+    return result`,
+    
+    custom: (cfg) => {
+      const code = cfg.code as string || "# Custom effect\nreturn frames";
+      return code;
+    },
+  };
+
+  if (EFFECT_TEMPLATES[nodeType]) {
+    return EFFECT_TEMPLATES[nodeType](config);
+  }
+  
+  return `# No template for ${nodeType}
+def process_frames(frames, **kwargs):
+    return frames`;
 }

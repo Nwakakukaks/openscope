@@ -113,7 +113,7 @@ STARTER_TEMPLATES = [
                 "type": "pluginConfig",
                 "position": {"x": 50, "y": 50},
                 "config": {
-                    "pipelineId": "yolo-mask",
+                    "pipelineId": "yolo_mask",
                     "pluginName": "YOLO Mask",
                     "pluginDescription": "YOLO26 segmentation for VACE inpainting",
                     "usage": "main",
@@ -127,7 +127,7 @@ STARTER_TEMPLATES = [
                 "type": "pipeline",
                 "position": {"x": 610, "y": 50},
                 "config": {
-                    "pipelineId": "yolo-mask",
+                    "pipelineId": "yolo_mask",
                     "modelSize": "nano",
                     "outputMode": "mask",
                     "targetClass": "person",

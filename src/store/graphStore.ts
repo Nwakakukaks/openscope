@@ -84,6 +84,19 @@ export const nodeDefaults: Record<string, Partial<NodeData>> = {
     label: "Kaleido",
     config: { slices: 6, rotation: 0 },
   },
+  kaleidoscope: {
+    label: "Kaleidoscope",
+    config: { 
+      enabled: true,
+      mix: 1.0,
+      mirrorMode: "none",
+      rotationalEnabled: true,
+      rotationalSlices: 6,
+      rotationDeg: 0.0,
+      zoom: 1.0,
+      warp: 0.0,
+    },
+  },
   blend: {
     label: "Blend",
     config: { mode: "add", opacity: 0.5 },
@@ -138,6 +151,76 @@ export const nodeDefaults: Record<string, Partial<NodeData>> = {
   halftone: {
     label: "Halftone",
     config: { enabled: false, dotSize: 8, sharpness: 0.7 },
+  },
+  // VFX plugins (full effects)
+  bloom: {
+    label: "Bloom",
+    config: { 
+      threshold: 0.8,
+      softKnee: 0.5,
+      intensity: 1.0,
+      radius: 8,
+      downsample: 1,
+      debug: false,
+    },
+  },
+  cosmicVFX: {
+    label: "Cosmic VFX",
+    config: {
+      enableGlitch: true,
+      glitchShader: "basic",
+      glitchIntensity: 1.0,
+      enableRetro: true,
+      retroShader: "vhs",
+      retroIntensity: 1.0,
+      enableDistortion: true,
+      distortionShader: "wave",
+      distortionIntensity: 1.0,
+      enableColor: true,
+      colorShader: "hueshift",
+      colorIntensity: 1.0,
+      enableEdge: false,
+      edgeShader: "sobel",
+      edgeIntensity: 1.0,
+      enableBlur: false,
+      blurShader: "gaussian",
+      blurIntensity: 1.0,
+      enableBlend: false,
+      blendShader: "screen",
+      blendIntensity: 1.0,
+      enableGenerative: false,
+      generativeShader: "noise",
+      generativeIntensity: 1.0,
+      enableAtmospheric: false,
+      atmosphericShader: "fog",
+      atmosphericIntensity: 1.0,
+      enableUtility: false,
+      utilityShader: "invert",
+      utilityIntensity: 1.0,
+      intensity: 1.0,
+      speed: 1.0,
+      scale: 1.0,
+      hueShift: 0.0,
+      saturation: 1.0,
+      brightness: 1.0,
+      blendMode: "normal",
+    },
+  },
+  vfxPack: {
+    label: "VFX Pack",
+    config: {
+      chromaticEnabled: true,
+      chromaticIntensity: 0.3,
+      chromaticAngle: 0.0,
+      vhsEnabled: false,
+      scanLineIntensity: 0.3,
+      scanLineCount: 100,
+      vhsNoise: 0.1,
+      trackingDistortion: 0.2,
+      halftoneEnabled: false,
+      halftoneDotSize: 8,
+      halftoneSharpness: 0.7,
+    },
   },
   // Settings nodes - control pipeline parameters
   noiseSettings: {
@@ -403,11 +486,27 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     // Handle pipeline_ type (e.g., pipeline_animateDiff)
     if (type.startsWith("pipeline_")) {
       const pipelineId = type.replace("pipeline_", "");
-      defaults = {
-        label: "Main Pipeline",
-        // config: { pipelineId, remoteInference: false },
-        config: { pipelineId },
-      };
+      
+      // Handle custom pre/post processor - create placeholder that can be renamed
+      if (pipelineId === "customPreprocessor") {
+        defaults = {
+          label: "Preprocessor",
+          config: { pipelineId: "my-preprocessor", isCustomPipeline: true, usage: "preprocessor" },
+        };
+      } else if (pipelineId === "customPostprocessor") {
+        defaults = {
+          label: "Postprocessor",
+          config: { pipelineId: "my-postprocessor", isCustomPipeline: true, usage: "postprocessor" },
+        };
+      } else {
+        // Built-in pipelines - show as Preprocessor or Postprocessor based on the pipeline ID
+        const postprocessorPipelines = ["bloom", "cosmic-vfx", "vfx-pack"];
+        const isPost = postprocessorPipelines.includes(pipelineId);
+        defaults = {
+          label: isPost ? "Postprocessor" : "Preprocessor",
+          config: { pipelineId },
+        };
+      }
     }
 
   
@@ -454,6 +553,25 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         };
       }
 
+      // Handle pipeline_ type to extract pipelineId
+      let config = { ...defaults.config, ...n.config };
+      if (n.type.startsWith("pipeline_")) {
+        const pipelineId = n.type.replace("pipeline_", "");
+        config = { ...config, pipelineId };
+      }
+      
+      // Also handle known template node types that map to different pipeline IDs
+      const templateToPipelineId: Record<string, string> = {
+        "yoloMask": "yolo_mask",
+        "kaleidoscope": "kaleido-scope",
+        "bloom": "bloom",
+        "cosmicVFX": "cosmic-vfx",
+        "vfxPack": "vfx-pack",
+      };
+      if (templateToPipelineId[n.type]) {
+        config = { ...config, pipelineId: templateToPipelineId[n.type] };
+      }
+
       return {
         id: uuidv4(),
         type: "scopeNode",
@@ -462,23 +580,21 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         data: {
           label: defaults.label || n.type,
           type: n.type,
-          config: { ...defaults.config, ...n.config },
+          config,
         },
       };
     });
 
     let newEdges: Edge[] = [];
     
-    const isPreprocessor = (type: string) => 
-      ["segmentation", "depthEstimation", "backgroundRemoval"].includes(type);
-    const isPostprocessor = (type: string) => 
-      ["colorGrading", "upscaling", "denoising", "styleTransfer", "vignette", "kaleido", "blend", "mirror", "brightness", "contrast", "blur", "mask", "chromatic", "vhs", "halftone"].includes(type);
     const isInputNode = (type: string) => 
       ["videoInput", "textPrompt", "imageInput", "parameters"].includes(type);
     const isOutputNode = (type: string) => 
       ["pipelineOutput", "preprocessorOutput", "postprocessorOutput"].includes(type);
     const isMainPipeline = (type: string) => 
       type.startsWith("pipeline_") || type === "pipeline";
+    const isPreprocessor = (type: string) => type.startsWith("pipeline_");
+    const isPostprocessor = (type: string) => type.startsWith("pipeline_");
     
     if (edges && edges.length > 0) {
       newEdges = edges.map((e) => ({

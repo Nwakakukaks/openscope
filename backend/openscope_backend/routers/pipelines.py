@@ -1,5 +1,6 @@
 """Pipelines router for fetching available pipelines from Scope server."""
 
+import os
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 
@@ -9,6 +10,24 @@ import httpx
 from ..config import settings
 
 router = APIRouter()
+
+
+DEMO_PIPELINES = {
+    "passthrough": {
+        "pipeline_name": "Passthrough",
+        "pipeline_description": "Pass video through unchanged (demo mode)",
+        "supported_modes": ["realtime"],
+        "default_mode": "realtime",
+        "plugin_name": "passthrough",
+    },
+    "gray": {
+        "pipeline_name": "Grayscale",
+        "pipeline_description": "Convert video to grayscale (demo mode)",
+        "supported_modes": ["realtime"],
+        "default_mode": "realtime",
+        "plugin_name": "gray",
+    },
+}
 
 
 class PipelineInfo(BaseModel):
@@ -29,6 +48,11 @@ class PipelinesResponse(BaseModel):
     count: int
 
 
+def is_demo_mode() -> bool:
+    """Check if demo mode is enabled."""
+    return os.getenv("DEMO_MODE", "false").lower() == "true"
+
+
 @router.get("/pipelines", response_model=PipelinesResponse)
 async def get_pipelines(scope_url: Optional[str] = None):
     """Fetch available pipelines from a Scope server.
@@ -39,6 +63,9 @@ async def get_pipelines(scope_url: Optional[str] = None):
     Returns:
         List of available pipelines with their configurations
     """
+    if is_demo_mode():
+        return PipelinesResponse(pipelines=DEMO_PIPELINES, count=len(DEMO_PIPELINES))
+
     if scope_url is None:
         scope_url = settings.scope_api_url
     try:
@@ -74,6 +101,9 @@ async def list_pipelines_simple(
     scope_url: str = None,
 ) -> List[PipelineInfo]:
     """Get a simplified list of pipelines."""
+    if is_demo_mode():
+        return [PipelineInfo(pipeline_id=k, **v) for k, v in DEMO_PIPELINES.items()]
+
     if scope_url is None:
         scope_url = settings.scope_api_url
     try:

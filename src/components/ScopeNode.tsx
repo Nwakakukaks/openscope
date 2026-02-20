@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import CodeEditor from "./CodeEditor";
+import { generateNodeCode } from "@/lib/codeGenerator";
 
 const DEFAULT_CODE_TEMPLATES: Record<string, string> = {
   pluginConfig: `from scope.core.plugins import hookimpl
@@ -827,7 +828,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   // Auto-initialize code when first entering code mode
   useEffect(() => {
     if (isCodeMode && !currentCode) {
-      const defaultCode = getNodeDefaultCode(nodeData.type, nodeData.config);
+      const defaultCode = generateNodeCode(nodeData.type, nodeData.config);
       updateNodeConfig(id, { pythonCode: defaultCode });
     }
   }, [isCodeMode, currentCode, nodeData.type, nodeData.config, id, updateNodeConfig]);
@@ -835,8 +836,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   // Reactive code updates when parameters change
   useEffect(() => {
     if (isCodeMode && currentCode) {
-      // Regenerate code when config changes to reflect new parameter values
-      const newCode = getNodeDefaultCode(nodeData.type, nodeData.config);
+      const newCode = generateNodeCode(nodeData.type, nodeData.config);
       if (newCode !== currentCode) {
         updateNodeConfig(id, { pythonCode: newCode });
       }
@@ -845,10 +845,12 @@ function ScopeNode({ id, data, selected }: NodeProps) {
 
   // Send parameter updates when settings nodes change during streaming
   const settingsNodeTypes = ["noiseSettings", "vaceSettings", "resolutionSettings", "advancedSettings", "loraSettings"];
+  const effectNodeTypes = ["kaleidoscope", "bloom", "cosmicVFX", "vfxPack", "chromatic", "vhs", "halftone", "vignette", "colorGrading"];
   const isSettingsNode = settingsNodeTypes.includes(nodeData.type);
+  const isEffectNode = effectNodeTypes.includes(nodeData.type);
   
   useEffect(() => {
-    if (isSettingsNode && nodeData.isStreaming && nodeData.sendParameterUpdate && nodeData.config) {
+    if ((isSettingsNode || isEffectNode) && nodeData.isStreaming && nodeData.sendParameterUpdate && nodeData.config) {
       const config = nodeData.config;
       const params: Record<string, unknown> = {};
       
@@ -877,17 +879,102 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         }
       }
       
+      // Effect node parameters - these are runtime parameters sent to the pipeline
+      if (nodeData.type === "kaleidoscope") {
+        params.kaleidoscope_enabled = config.enabled ?? true;
+        params.kaleidoscope_mix = config.mix ?? 1.0;
+        params.kaleidoscope_mirror_mode = config.mirrorMode ?? "none";
+        params.kaleidoscope_rotational_enabled = config.rotationalEnabled ?? true;
+        params.kaleidoscope_slices = config.rotationalSlices ?? 6;
+        params.kaleidoscope_rotation = config.rotationDeg ?? 0.0;
+        params.kaleidoscope_zoom = config.zoom ?? 1.0;
+        params.kaleidoscope_warp = config.warp ?? 0.0;
+      }
+      if (nodeData.type === "bloom") {
+        params.bloom_threshold = config.threshold ?? 0.8;
+        params.bloom_soft_knee = config.softKnee ?? 0.5;
+        params.bloom_intensity = config.intensity ?? 1.0;
+        params.bloom_radius = config.radius ?? 8;
+        params.bloom_downsample = config.downsample ?? 1;
+        params.bloom_debug = config.debug ?? false;
+      }
+      if (nodeData.type === "cosmicVFX") {
+        params.cosmic_enable_glitch = config.enableGlitch ?? true;
+        params.cosmic_glitch_shader = config.glitchShader ?? "basic";
+        params.cosmic_glitch_intensity = config.glitchIntensity ?? 1.0;
+        params.cosmic_enable_retro = config.enableRetro ?? true;
+        params.cosmic_retro_shader = config.retroShader ?? "vhs";
+        params.cosmic_retro_intensity = config.retroIntensity ?? 1.0;
+        params.cosmic_enable_distortion = config.enableDistortion ?? true;
+        params.cosmic_distortion_shader = config.distortionShader ?? "wave";
+        params.cosmic_distortion_intensity = config.distortionIntensity ?? 1.0;
+        params.cosmic_enable_color = config.enableColor ?? true;
+        params.cosmic_color_shader = config.colorShader ?? "hueshift";
+        params.cosmic_color_intensity = config.colorIntensity ?? 1.0;
+        params.cosmic_enable_edge = config.enableEdge ?? false;
+        params.cosmic_edge_shader = config.edgeShader ?? "sobel";
+        params.cosmic_edge_intensity = config.edgeIntensity ?? 1.0;
+        params.cosmic_enable_blur = config.enableBlur ?? false;
+        params.cosmic_blur_shader = config.blurShader ?? "gaussian";
+        params.cosmic_blur_intensity = config.blurIntensity ?? 1.0;
+        params.cosmic_intensity = config.intensity ?? 1.0;
+        params.cosmic_speed = config.speed ?? 1.0;
+        params.cosmic_hue_shift = config.hueShift ?? 0.0;
+        params.cosmic_saturation = config.saturation ?? 1.0;
+        params.cosmic_brightness = config.brightness ?? 1.0;
+        params.cosmic_blend_mode = config.blendMode ?? "normal";
+      }
+      if (nodeData.type === "vfxPack") {
+        params.vfx_chromatic_enabled = config.chromaticEnabled ?? true;
+        params.vfx_chromatic_intensity = config.chromaticIntensity ?? 0.3;
+        params.vfx_chromatic_angle = config.chromaticAngle ?? 0.0;
+        params.vfx_vhs_enabled = config.vhsEnabled ?? false;
+        params.vfx_scan_line_intensity = config.scanLineIntensity ?? 0.3;
+        params.vfx_scan_line_count = config.scanLineCount ?? 100;
+        params.vfx_noise = config.vhsNoise ?? 0.1;
+        params.vfx_tracking = config.trackingDistortion ?? 0.2;
+        params.vfx_halftone_enabled = config.halftoneEnabled ?? false;
+        params.vfx_halftone_dot_size = config.halftoneDotSize ?? 8;
+        params.vfx_halftone_sharpness = config.halftoneSharpness ?? 0.7;
+      }
+      if (nodeData.type === "chromatic") {
+        params.chromatic_enabled = config.enabled ?? true;
+        params.chromatic_intensity = config.intensity ?? 0.3;
+        params.chromatic_angle = config.angle ?? 0;
+      }
+      if (nodeData.type === "vhs") {
+        params.vhs_enabled = config.enabled ?? false;
+        params.scan_line_intensity = config.scanLineIntensity ?? 0.3;
+        params.scan_line_count = config.scanLineCount ?? 100;
+        params.vhs_noise = config.noise ?? 0.1;
+        params.tracking_distortion = config.tracking ?? 0.2;
+      }
+      if (nodeData.type === "halftone") {
+        params.halftone_enabled = config.enabled ?? false;
+        params.halftone_dot_size = config.dotSize ?? 8;
+        params.halftone_sharpness = config.sharpness ?? 0.7;
+      }
+      if (nodeData.type === "vignette") {
+        params.vignette_intensity = config.intensity ?? 0.5;
+        params.vignette_smoothness = config.smoothness ?? 0.5;
+      }
+      if (nodeData.type === "colorGrading") {
+        params.color_temperature = config.temperature ?? 0;
+        params.color_tint = config.tint ?? 0;
+        params.color_saturation = config.saturation ?? 0;
+        params.color_contrast = config.contrast ?? 0;
+      }
+      
       if (Object.keys(params).length > 0) {
         nodeData.sendParameterUpdate(params);
       }
     }
-  }, [nodeData.config, nodeData.isStreaming, nodeData.sendParameterUpdate, nodeData.type, isSettingsNode]);
+  }, [nodeData.config, nodeData.isStreaming, nodeData.sendParameterUpdate, nodeData.type, isSettingsNode, isEffectNode]);
 
   const toggleCodeMode = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isCodeMode && !currentCode) {
-      // Initialize with default code when entering code mode
-      const defaultCode = getNodeDefaultCode(nodeData.type, nodeData.config);
+      const defaultCode = generateNodeCode(nodeData.type, nodeData.config);
       updateNodeConfig(id, { isCodeMode: true, pythonCode: defaultCode });
     } else {
       updateNodeConfig(id, { isCodeMode: !isCodeMode });
@@ -1226,7 +1313,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       {isCodeMode && (
         <div className="px-3 pb-3 mt-2 border-t border-border/40">
           <CodeEditor
-            value={String(nodeData.config?.pythonCode || getNodeDefaultCode(nodeData.type, nodeData.config))}
+            value={String(nodeData.config?.pythonCode || generateNodeCode(nodeData.type, nodeData.config))}
             onChange={(value) => updateNodeConfig(id, { pythonCode: value })}
             onClick={(e) => e.stopPropagation()}
           />

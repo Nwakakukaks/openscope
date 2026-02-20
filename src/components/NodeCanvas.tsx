@@ -82,12 +82,29 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
       const nodeType = event.dataTransfer.getData("nodeType");
       if (!nodeType || !wrapperRef.current) return;
       const createNewKind = event.dataTransfer.getData("createNewKind") || undefined;
+      const pipelineId = event.dataTransfer.getData("pipelineId") || undefined;
 
       const reactFlowBounds = wrapperRef.current.getBoundingClientRect();
       const position = {
         x: event.clientX - reactFlowBounds.left - 80,
         y: event.clientY - reactFlowBounds.top - 25,
       };
+
+      // Handle Create New (Beta) from pre/post processor categories
+      if (nodeType === "pipeline_customPreprocessor") {
+        addNode(nodeType, position, { createNewKind: "preprocessor" });
+        window.dispatchEvent(new CustomEvent('openscope:open-ai-assistant', { 
+          detail: { kind: "preprocessor", position } 
+        }));
+        return;
+      }
+      if (nodeType === "pipeline_customPostprocessor") {
+        addNode(nodeType, position, { createNewKind: "postprocessor" });
+        window.dispatchEvent(new CustomEvent('openscope:open-ai-assistant', { 
+          detail: { kind: "postprocessor", position } 
+        }));
+        return;
+      }
 
       if (nodeType === "parameters" && createNewKind) {
         addNode(nodeType, position, { createNewKind });
@@ -103,6 +120,9 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
         window.dispatchEvent(new CustomEvent('openscope:open-ai-assistant', { 
           detail: { kind: createNewKind, position } 
         }));
+      } else if (pipelineId) {
+        // Pass pipelineId from drag data to addNode
+        addNode(nodeType, position, { pipelineId });
       } else {
         addNode(nodeType, position);
       }

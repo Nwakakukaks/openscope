@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Braces, BrainCog, FolderDown, Library, PictureInPicture, Workflow } from "lucide-react";
 
 export default function Home() {
@@ -41,11 +42,15 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Hero Image Placeholder */}
+        {/* Hero Image */}
         <div className="max-w-5xl mx-auto mt-16">
-          <div className="aspect-video rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)] flex items-center justify-center">
-            <span className="text-[hsl(220,9%,55%)]">OpenScope Editor Preview</span>
-          </div>
+          <Image 
+            src="/hero1.png" 
+            alt="OpenScope Visual Builder"
+            width={1200}
+            height={675}
+            className="rounded-xl border border-[hsl(220,10%,18%)]"
+          />
         </div>
       </section>
 

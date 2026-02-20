@@ -278,3 +278,77 @@ uv run daydream-scope install -e /path/to/my-plugin
 4. **Add validation** - Use Pydantic field validation for all parameters
 
 5. **Include debug options** - Helpful for troubleshooting issues
+
+---
+
+## Runtime vs Load-Time Parameters
+
+Scope supports two types of parameters:
+
+### Runtime Parameters (Default)
+
+Runtime parameters can be changed while the pipeline is active. They take effect immediately without restarting the pipeline. These are ideal for:
+- Effect intensities
+- Boolean toggles
+- Color adjustments
+- Strength values
+
+**Configuration:**
+```python
+from pydantic import Field
+from scope.core.pipelines.base_schema import ui_field_config
+
+effect_intensity: float = Field(
+    default=0.5,
+    ge=0.0,
+    le=1.0,
+    description="Effect intensity",
+    json_schema_extra=ui_field_config(order=1, label="Intensity"),
+)
+# No is_load_param = runtime by default
+```
+
+**Access in pipeline:**
+```python
+def __call__(self, **kwargs) -> dict:
+    intensity = kwargs.get("effect_intensity", 0.5)  # Gets current value
+    # Use intensity for processing - changes apply immediately
+```
+
+### Load-Time Parameters
+
+Load-time parameters require pipeline restart to take effect. Use `is_load_param=True` for:
+- Resolution settings
+- Model selection
+- Quantization options
+- Device configuration
+
+**Configuration:**
+```python
+resolution: int = Field(
+    default=512,
+    ge=256,
+    le=2048,
+    description="Output resolution",
+    json_schema_extra=ui_field_config(
+        order=1,
+        component="resolution",
+        is_load_param=True,  # <-- Requires restart
+    ),
+)
+```
+
+### Key Rules
+
+1. **Default to runtime** - Most parameters should be runtime-configurable
+2. **Access via kwargs** - Runtime parameters must be accessed in `__call__()` via `kwargs.get()`, NOT stored in `self`
+3. **No self.storage** - Never store runtime values in `self` - they won't update!
+4. **Immediate effect** - Changes to runtime params reflect immediately in the output stream
+
+### OpenScope Requirements
+
+When building processors in OpenScope:
+- All user-exposed parameters must be runtime-configurable unless explicitly impossible
+- The code block must reflect the current parameter values
+- Export must preserve runtime config semantics
+- Generated plugins must accept dynamic config updates during streaming

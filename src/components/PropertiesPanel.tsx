@@ -201,6 +201,7 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
   ],
   // Pipeline configs for processor pipelines - these get merged when the pipelineId matches
   kaleidoscope_pipeline: [
+    { label: "pipelineId", type: "text", readonly: true, description: "Pipeline identifier" },
     { label: "enabled", type: "toggle", description: "Enable kaleidoscope effect" },
     { label: "mix", type: "slider", min: 0, max: 1, description: "Blend original (0) to fully effected (1)" },
     { label: "Mode", type: "select", options: ["none", "2x", "4x", "kaleido6"], description: "Mirror symmetry mode" },
@@ -211,6 +212,7 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
     { label: "warp", type: "slider", min: -0.5, max: 0.5, description: "Radial warp amount" },
   ],
   yolo_mask_pipeline: [
+    { label: "pipelineId", type: "text", readonly: true, description: "Pipeline identifier" },
     { label: "modelSize", type: "select", options: ["nano", "small", "medium", "large", "xlarge"], description: "YOLO model variant" },
     { label: "outputMode", type: "select", options: ["mask", "overlay"], description: "Output mode" },
     { label: "targetClass", type: "text", description: "Object class to segment" },
@@ -218,6 +220,7 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
     { label: "invertMask", type: "toggle", description: "Invert the mask" },
   ],
   bloom_pipeline: [
+    { label: "pipelineId", type: "text", readonly: true, description: "Pipeline identifier" },
     { label: "threshold", type: "slider", min: 0, max: 1, description: "Brightness threshold for bloom extraction" },
     { label: "softKnee", type: "slider", min: 0, max: 1, description: "Softness of threshold transition" },
     { label: "intensity", type: "slider", min: 0, max: 2, description: "Bloom intensity multiplier" },
@@ -226,6 +229,7 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
     { label: "debug", type: "toggle", description: "Enable debug logging" },
   ],
   cosmic_vfx_pipeline: [
+    { label: "pipelineId", type: "text", readonly: true, description: "Pipeline identifier" },
     { label: "enableGlitch", type: "toggle", description: "Enable glitch effect" },
     { label: "glitchShader", type: "select", options: ["basic", "digital", "color"], description: "Glitch shader type" },
     { label: "glitchIntensity", type: "slider", min: 0, max: 2, description: "Glitch intensity" },
@@ -252,6 +256,7 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
     { label: "blendMode", type: "select", options: ["normal", "screen", "multiply", "overlay"], description: "Blend mode with original" },
   ],
   vfx_pack_pipeline: [
+    { label: "pipelineId", type: "text", readonly: true, description: "Pipeline identifier" },
     { label: "chromaticEnabled", type: "toggle", description: "Enable chromatic aberration" },
     { label: "chromaticIntensity", type: "slider", min: 0, max: 1, description: "RGB channel displacement strength" },
     { label: "chromaticAngle", type: "slider", min: 0, max: 360, description: "Displacement direction (degrees)" },
@@ -321,12 +326,12 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
   ],
   // kaleidoscope - from kaleido-scope plugin (full version)
   kaleidoscope: [
-    { label: "enabled", type: "toggle", description: "Enable the effect (off returns original)" },
+    { label: "enabled", type: "toggle", description: "Enable kaleidoscope effect" },
     { label: "mix", type: "slider", min: 0, max: 1, description: "Blend original (0) to fully effected (1)" },
-    { label: "Mode", type: "select", options: ["none", "2x", "4x", "kaleido6"], description: "Mirror symmetry mode" },
-    { label: "Enabled", type: "toggle", description: "Enable N-fold rotational symmetry" },
-    { label: "Slices", type: "number", min: 3, max: 12, description: "Number of symmetry slices (N)" },
-    { label: "rotate", type: "slider", min: 0, max: 360, description: "Rotate pattern (degrees)" },
+    { label: "mirrorMode", type: "select", options: ["none", "2x", "4x", "kaleido6"], description: "Mirror symmetry mode" },
+    { label: "rotationalEnabled", type: "toggle", description: "Enable N-fold rotational symmetry" },
+    { label: "rotationalSlices", type: "number", min: 3, max: 12, description: "Number of symmetry slices (N)" },
+    { label: "rotationDeg", type: "slider", min: 0, max: 360, description: "Rotate pattern (degrees)" },
     { label: "zoom", type: "slider", min: 0.5, max: 2, description: "Zoom into source before symmetry" },
     { label: "warp", type: "slider", min: -0.5, max: 0.5, description: "Radial warp amount" },
   ],
@@ -640,23 +645,40 @@ export default function PropertiesPanel() {
   if (!node) return null;
 
   const nodeType = node.data.type;
-  const isPipelineNode = nodeType.startsWith("pipeline_");
+  const isPipelineNode = nodeType.startsWith("pipeline_") || nodeType === "pipeline";
   
   // Determine config key - for pipeline nodes, check if it's a processor pipeline
   let configKey = isPipelineNode ? "pipeline" : nodeType;
+  
+  // Map processor pipeline IDs to their config keys
+  const processorConfigMap: Record<string, string> = {
+    "kaleido-scope": "kaleidoscope_pipeline",
+    "kaleido-scope-pre": "kaleidoscope_pipeline",
+    "kaleido-scope-post": "kaleidoscope_pipeline",
+    "kaleidoscope": "kaleidoscope_pipeline",
+    "yolo_mask": "yolo_mask_pipeline",
+    "yolo-mask": "yolo_mask_pipeline",
+    "yoloMask": "yolo_mask_pipeline",
+    "bloom": "bloom_pipeline",
+    "cosmic-vfx": "cosmic_vfx_pipeline",
+    "cosmicVFX": "cosmic_vfx_pipeline",
+    "vfx-pack": "vfx_pack_pipeline",
+    "vfxPack": "vfx_pack_pipeline",
+  };
+  
   if (isPipelineNode) {
-    const pipelineId = node.data.config?.pipelineId as string || "";
-    // Map processor pipeline IDs to their config keys
-    const processorConfigMap: Record<string, string> = {
-      "kaleido-scope": "kaleidoscope_pipeline",
-      "kaleido-scope-pre": "kaleidoscope_pipeline",
-      "kaleido-scope-post": "kaleidoscope_pipeline",
-      "yolo-mask": "yolo_mask_pipeline",
-      "bloom": "bloom_pipeline",
-      "cosmic-vfx": "cosmic_vfx_pipeline",
-      "vfx-pack": "vfx_pack_pipeline",
-    };
+    // Get pipelineId from config first, then from node type
+    let pipelineId = node.data.config?.pipelineId as string || "";
+    if (!pipelineId && nodeType.startsWith("pipeline_")) {
+      pipelineId = nodeType.replace("pipeline_", "");
+    }
     const processorConfigKey = processorConfigMap[pipelineId];
+    if (processorConfigKey) {
+      configKey = processorConfigKey;
+    }
+  } else {
+    // Also check processorConfigMap for non-pipeline node types (like "kaleidoscope" from templates)
+    const processorConfigKey = processorConfigMap[nodeType];
     if (processorConfigKey) {
       configKey = processorConfigKey;
     }
@@ -808,10 +830,11 @@ export default function PropertiesPanel() {
                       {field.type === "text" && (
                         <input
                           type="text"
-                          className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                          className={`w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 ${field.readonly ? "bg-muted/50 cursor-not-allowed" : ""}`}
                           value={String(value)}
+                          readOnly={field.readonly}
                           onChange={(e) =>
-                            updateNodeConfig(node.id, { [field.label]: e.target.value })
+                            !field.readonly && updateNodeConfig(node.id, { [field.label]: e.target.value })
                           }
                         />
                       )}
