@@ -1120,8 +1120,25 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
+  const checkApiConfig = async (): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/ai/config");
+      const data = await res.json();
+      return data.configured === true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleChatSend = async () => {
     if (!chatInput.trim() || chatLoading || !processorKind) return;
+
+    // Check if API key is configured
+    const isConfigured = await checkApiConfig();
+    if (!isConfigured) {
+      showError("API key not configured", "Please set NEXT_PUBLIC_GROQ_API_KEY in your environment to use AI generation");
+      return;
+    }
     
     const userMessage = chatInput.trim();
     setChatInput("");

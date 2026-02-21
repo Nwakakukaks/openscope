@@ -23,12 +23,12 @@ export default function Home() {
   const [showOpen, setShowOpen] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  
+
   const selectedNode = useGraphStore((state) => state.selectedNode);
   const nodes = useGraphStore((state) => state.nodes);
   const edges = useGraphStore((state) => state.edges);
   const addOutputNode = useGraphStore((state) => state.addOutputNode);
-  
+
   const { saveWorkflow, loading: saveLoading } = useWorkflows();
   const {
     isConnected: isScopeConnected,
@@ -40,13 +40,13 @@ export default function Home() {
     connectToCloud,
     sendParameterUpdate,
   } = useScopeServer();
-  
+
   const [user, setUser] = useState<{ email?: string; avatar_url?: string } | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  
+
   const videoElementRef = useRef<HTMLVideoElement | null>(null);
 
   const handleVideoUploadFromFile = useCallback(async (file: File) => {
@@ -65,29 +65,29 @@ export default function Home() {
     video.loop = true; // Loop the video continuously
     video.autoplay = true;
     videoElementRef.current = video;
-    
+
     await new Promise<void>((resolve, reject) => {
       video.onloadedmetadata = () => resolve();
       video.onerror = () => reject(new Error('Failed to load video'));
     });
-    
+
     // Create canvas matching video resolution
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
-    
+
     if (!ctx) {
       throw new Error('Failed to get canvas context');
     }
-    
+
     // Start video playback
     await video.play();
-    
+
     // Continuous frame capture at 15fps (like Scope)
     const FPS = 15;
     const stream = canvas.captureStream(FPS);
-    
+
     // Draw frames continuously using requestAnimationFrame
     const drawFrame = () => {
       if (videoElementRef.current && ctx) {
@@ -96,7 +96,7 @@ export default function Home() {
       requestAnimationFrame(drawFrame);
     };
     drawFrame();
-    
+
     setLocalStream(stream);
   }, []);
 
@@ -131,7 +131,7 @@ export default function Home() {
       console.log("[OpenScope] Video stream ready from node:", customEvent.detail.nodeId);
       setLocalStream(customEvent.detail.stream);
     };
-    
+
     window.addEventListener('openscope:video-stream-ready', handleVideoStreamReady);
     return () => {
       window.removeEventListener('openscope:video-stream-ready', handleVideoStreamReady);
@@ -143,7 +143,7 @@ export default function Home() {
     const handleOpenAI = () => {
       setShowAI(true);
     };
-    
+
     window.addEventListener('openscope:open-ai-assistant', handleOpenAI);
     return () => {
       window.removeEventListener('openscope:open-ai-assistant', handleOpenAI);
@@ -162,26 +162,26 @@ export default function Home() {
 
     try {
       setIsLoading(true);
-      
+
       const pluginConfig = nodes.find(n => n.data.type === "pluginConfig");
-      
+
       // Get pipeline node - this is where the main pipeline is defined
       const pipelineNode = nodes.find(n => n.data.type === "pipeline");
-      const pipelineId = pipelineNode?.data?.config?.pipelineId as string || 
-                        pluginConfig?.data?.config?.pipelineId as string || 
-                        "passthrough";
-      
+      const pipelineId = pipelineNode?.data?.config?.pipelineId as string ||
+        pluginConfig?.data?.config?.pipelineId as string ||
+        "passthrough";
+
       // Get any processor-specific config from the pipeline node
       const pipelineConfig = pipelineNode?.data?.config || {};
-      
+
       const mode = pluginConfig?.data?.config?.mode as string || "video";
       const remoteInference = pluginConfig?.data?.config?.remoteInference as boolean ?? false;
       const supportsPrompts = pluginConfig?.data?.config?.supportsPrompts as boolean ?? false;
-      
+
       // Legacy: still check for standalone processor nodes (not using pipeline as processor)
       const processorNodeTypes = ['kaleidoscope', 'yoloMask', 'bloom', 'cosmicVFX', 'vfxPack'];
       const processorNodes = nodes.filter(n => processorNodeTypes.includes(n.data.type));
-      
+
       // Map node types to their pipeline IDs (for legacy standalone processors)
       const processorPipelineIds: Record<string, string> = {
         'kaleidoscope': 'kaleido-scope-pre',
@@ -190,7 +190,7 @@ export default function Home() {
         'cosmicVFX': 'cosmic-vfx',
         'vfxPack': 'vfx-pack',
       };
-      
+
       // Check and install required plugins
       for (const node of processorNodes) {
         const processorType = node.data.type as string;
@@ -217,17 +217,17 @@ export default function Home() {
           console.error(`[OpenScope] Error checking/installing plugin for ${processorType}:`, err);
         }
       }
-      
+
       const pipeline_ids = [
         ...processorNodes.map(n => processorPipelineIds[n.data.type]).filter(Boolean),
         pipelineId,
       ];
-      
+
       // Get input nodes
       const videoInputNode = nodes.find(n => n.data.type === "videoInput");
       const textPromptNodes = nodes.filter(n => n.data.type === "textPrompt");
       const imageInputNodes = nodes.filter(n => n.data.type === "imageInput");
-      
+
       // If remote inference is enabled, connect to cloud first
       if (remoteInference) {
         try {
@@ -236,21 +236,17 @@ export default function Home() {
           console.warn("Cloud connection failed, continuing anyway:", cloudErr);
         }
       }
-      
+
       // Include pipeline config parameters when loading pipeline
       await loadPipeline([pipelineId], { remoteInference, ...pipelineConfig });
-      
+
       // Build prompts array from textPrompt nodes
       const prompts = textPromptNodes.map(node => ({
         text: (node.data.config?.text as string) || "",
         weight: (node.data.config?.weight as number) || 1,
       }));
-      
-      console.log("[OpenScope] Video input node:", videoInputNode);
-      console.log("[OpenScope] Local stream:", localStream);
-      console.log("[OpenScope] Mode:", mode);
-      console.log("[OpenScope] Pipeline ID:", pipelineId);
-      
+
+
       // Build initial parameters
       const initialParameters: Record<string, unknown> = {
         input_mode: mode,
@@ -261,12 +257,12 @@ export default function Home() {
         pipeline_ids: pipeline_ids,
         recording: false,
       };
-      
+
       // Add prompts if available
       if (supportsPrompts && prompts.length > 0) {
         initialParameters.prompts = prompts;
       }
-      
+
       // Add reference images if available
       if (imageInputNodes.length > 0) {
         const images = imageInputNodes
@@ -276,23 +272,47 @@ export default function Home() {
           initialParameters.images = images;
         }
       }
-      
-      console.log("[OpenScope] Initial parameters being sent:", JSON.stringify(initialParameters, null, 2));
-      console.log("[OpenScope] Local stream for WebRTC:", localStream ? "available" : "NOT AVAILABLE");
-      console.log("[OpenScope] Video tracks:", localStream?.getVideoTracks().length);
-      
+
+
+
+      // Validate: must have input node in canvas
+      const hasInput = nodes.some(n => 
+        n.data.type === "videoInput" || 
+        n.data.type === "imageInput" || 
+        n.data.type === "textPrompt"
+      );
+
+      if (!hasInput) {
+        showError("Missing input node", "Add an input node (Video, Image, or Text) to your workflow before running");
+        setIsLoading(false);
+        return;
+      }
+
+      // Validate: must have output node in canvas
+      const hasOutput = nodes.some(n => 
+        n.data.type === "pipelineOutput" || 
+        n.data.type?.startsWith("pipeline_")
+      );
+
+      if (!hasOutput) {
+        showError("Missing output node", "Add a pipeline output node to your workflow before running");
+        setIsLoading(false);
+        return;
+      }
+
+      // Check if video input has uploaded content
       if (!localStream) {
         showWarning("No video input", "Please upload a video in the Video Input node first");
         setIsLoading(false);
         return;
       }
-      
+
       // Start WebRTC - localStream will be sent if user uploaded video in Preview panel
       await startWebRTC((stream) => {
         setRemoteStream(stream);
         setIsStreaming(true);
       }, initialParameters, localStream);
-      
+
     } catch (err) {
       console.error("Failed to start stream:", err);
       showError("Failed to start stream", err instanceof Error ? err.message : "Unknown error");
@@ -326,13 +346,13 @@ export default function Home() {
       <div className="flex-1 flex min-h-0 w-full">
         {sidebarOpen && <NodePalette />}
         <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
-          <NodeCanvas 
-            localStream={localStream} 
+          <NodeCanvas
+            localStream={localStream}
             remoteStream={remoteStream}
             isStreaming={isStreaming}
             sendParameterUpdate={sendParameterUpdate}
           />
-         
+
         </div>
         {selectedNode && <PropertiesPanel />}
       </div>
@@ -363,7 +383,7 @@ export default function Home() {
       <AuthModal
         isOpen={showAuth}
         onClose={() => setShowAuth(false)}
-        onAuthSuccess={() => {}}
+        onAuthSuccess={() => { }}
       />
     </div>
   );

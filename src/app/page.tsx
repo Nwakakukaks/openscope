@@ -65,7 +65,7 @@ export default function Home() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Feature 1 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
-              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
                 <PictureInPicture/>
               </div>
               <h3 className="text-lg font-semibold mb-2">Video to AI Output</h3>
@@ -76,7 +76,7 @@ export default function Home() {
 
             {/* Feature 2 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
-              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
  <Braces />
               </div>
               <h3 className="text-lg font-semibold mb-2">Live Code Blocks</h3>
@@ -87,7 +87,7 @@ export default function Home() {
 
             {/* Feature 3 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
-              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
                 <FolderDown/>
               </div>
               <h3 className="text-lg font-semibold mb-2">Plugin Export</h3>
@@ -98,7 +98,7 @@ export default function Home() {
 
             {/* Feature 4 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
-            <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+            <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
                <BrainCog/>
               </div>
               <h3 className="text-lg font-semibold mb-2">AI Processor (Beta)</h3>
@@ -109,7 +109,7 @@ export default function Home() {
 
             {/* Feature 5 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
-              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
 <Library/>
               </div>
               <h3 className="text-lg font-semibold mb-2">Growing Library</h3>
@@ -120,7 +120,7 @@ export default function Home() {
 
             {/* Feature 6 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
-              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)]/20 flex items-center justify-center mb-4">
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
                <Workflow/> 
               </div>
               <h3 className="text-lg font-semibold mb-2">Visual Builder</h3>

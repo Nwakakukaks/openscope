@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import { generatePluginFiles } from "@/lib/codeGenerator";
+import { showSuccess, showError, showWarning, showInfo } from "@/lib/toast";
 import JSZip from "jszip";
 
 interface HeaderProps {
@@ -55,20 +56,59 @@ export default function Header({
   const edges = useGraphStore((state) => state.edges);
 
   const handleExport = async () => {
-    const files = generatePluginFiles(nodes, edges);
-    const zip = new JSZip();
-    
-    for (const [filename, content] of Object.entries(files)) {
-      zip.file(filename, content);
+    // Check if there are any nodes in the canvas
+    if (!nodes || nodes.length === 0) {
+      showError("Nothing to export", "Drag nodes into the canvas to create a workflow before exporting");
+      return;
+    }
+
+    // Check for required nodes: input and output
+    const hasInput = nodes.some(n => 
+      n.data.type === "videoInput" || 
+      n.data.type === "imageInput" || 
+      n.data.type === "textPrompt"
+    );
+    const hasOutput = nodes.some(n => 
+      n.data.type === "pipelineOutput" || 
+      n.data.type?.startsWith("pipeline_")
+    );
+
+    if (!hasInput) {
+      showError("Missing input node", "Add an input node (Video, Image, or Text) to your workflow before exporting");
+      return;
+    }
+
+    if (!hasOutput) {
+      showError("Missing output node", "Add a pipeline output node to your workflow before exporting");
+      return;
+    }
+
+    try {
+      const files = generatePluginFiles(nodes, edges);
+      const zip = new JSZip();
+      
+      for (const [filename, content] of Object.entries(files)) {
+        zip.file(filename, content);
+      }
+      
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "my_plugin.zip";
+      a.click();
+      URL.revokeObjectURL(url);
+      
+      showSuccess("Plugin exported!", "Your plugin has been downloaded as a ZIP file");
+    } catch (err) {
+      showError("Export failed", err instanceof Error ? err.message : "Failed to generate plugin files");
     }
     
-    const blob = await zip.generateAsync({ type: "blob" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "my_plugin.zip";
-    a.click();
-    URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+  };
+
+  const handlePublishToGithub = () => {
+    showInfo("Coming soon", "GitHub publishing will be available in a future update");
     setShowExportMenu(false);
   };
 
@@ -102,7 +142,7 @@ export default function Header({
         <nav className="flex items-center gap-1">
           <ActionButton icon={FolderPlus} label="Templates" onClick={onOpenTemplates} />
           {/* <ActionButton icon={FolderOpen} label="Open" onClick={onOpenOpen} /> */}
-          <ActionButton icon={Save} label="Save" onClick={onOpenSave} />
+          <ActionButton icon={Save} label="Save" onClick={() => showInfo("Coming soon", "Save functionality will be available in a future update")} />
         </nav>
       </div>
       <div className="flex items-center gap-3">
@@ -167,7 +207,10 @@ export default function Header({
                   </div>
                 </button>
                 <div className="h-px bg-border my-1" />
-                <button className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-accent rounded-md transition-colors">
+                <button 
+                  onClick={handlePublishToGithub}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-foreground hover:bg-accent rounded-md transition-colors"
+                >
                   <Github className="w-4 h-4 text-muted-foreground" />
                   <div className="text-left">
                     <div className="font-medium">Publish to GitHub</div>

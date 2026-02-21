@@ -50,14 +50,9 @@ const getBackendUrl = () => {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
-  // Use custom API URL if set (for Vercel/Render deployments)
   if (apiUrl) {
     return apiUrl;
   }
-  // In development, use localhost
-  const fallbackUrl =
-    window.location.hostname === "localhost" ? "http://localhost:8000" : "";
-  return fallbackUrl;
 };
 
 export function useScopeServer() {
@@ -79,10 +74,9 @@ export function useScopeServer() {
     try {
       const backendUrl = getBackendUrl();
       const fullUrl = `${backendUrl}${SCOPE_API_URL}/health`;
-    
 
       const response = await fetch(fullUrl);
-     
+
       if (response.ok) {
         setIsConnected(true);
         setError(null);
@@ -93,7 +87,6 @@ export function useScopeServer() {
       setError(`Server returned ${response.status}: ${errorText}`);
       return false;
     } catch (err) {
- 
       setIsConnected(false);
       setError(`Cannot connect to Scope server: ${err}`);
       return false;
@@ -149,7 +142,6 @@ export function useScopeServer() {
         );
 
         if (!response.ok) {
-         
           const contentType = response.headers.get("content-type");
           let errorMessage = "Failed to load pipeline";
           if (contentType?.includes("application/json")) {

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Send, Sparkles, Lightbulb, Loader2, Wand2, BookOpen } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
+import { showError, showWarning } from "@/lib/toast";
 
 interface Message {
   role: "user" | "assistant";
@@ -44,8 +45,25 @@ What would you like to create today?`
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const checkApiConfig = async (): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/ai/config");
+      const data = await res.json();
+      return data.configured === true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || loading) return;
+
+    // Check if API key is configured
+    const isConfigured = await checkApiConfig();
+    if (!isConfigured) {
+      showError("API key not configured", "Please set NEXT_PUBLIC_GROQ_API_KEY in your environment to use AI features");
+      return;
+    }
     
     const userMessage = input.trim();
     setInput("");
