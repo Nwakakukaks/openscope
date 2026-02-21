@@ -26,6 +26,7 @@ import {
   ChevronLeft,
   Loader2,
 } from "lucide-react";
+import { showError } from "@/lib/toast";
 
 interface PipelineInfo {
   pipeline_id: string;
@@ -584,6 +585,7 @@ export default function PropertiesPanel() {
         }
       } catch (error) {
         console.error("Failed to fetch pipelines:", error);
+        showError("Failed to load pipelines", "Could not connect to Scope server");
       } finally {
         setPipelinesLoading(false);
       }

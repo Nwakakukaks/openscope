@@ -32,6 +32,7 @@ import {
   Tv,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
+import { showError } from "@/lib/toast";
 
 interface NodeCategory {
   name: string;
@@ -112,6 +113,7 @@ export default function NodePalette() {
     } catch (error) {
       console.error("Failed to fetch pipelines:", error);
       setPipelinesError("Could not connect to Scope server");
+      showError("Failed to load pipelines", "Could not connect to Scope server");
     } finally {
       setPipelinesLoading(false);
     }

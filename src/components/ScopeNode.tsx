@@ -38,6 +38,7 @@ import {
 import { useGraphStore } from "@/store/graphStore";
 import CodeEditor from "./CodeEditor";
 import { generateNodeCode } from "@/lib/codeGenerator";
+import { showSuccess, showError } from "@/lib/toast";
 
 const DEFAULT_CODE_TEMPLATES: Record<string, string> = {
   pluginConfig: `from scope.core.plugins import hookimpl
@@ -1146,6 +1147,9 @@ function ScopeNode({ id, data, selected }: NodeProps) {
           isCodeMode: true,
         });
         
+        showSuccess("Processor generated!", "Code added to node. Switch to code mode to edit.");
+        
+        // Add success message to chat
         setChatMessages(prev => [...prev, { 
           role: "assistant", 
           content: `Generated! Code added to node. Switch to code mode to edit or export.`,
@@ -1153,12 +1157,14 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         
         setNodeMode("code");
       } else {
+        showError("Generation failed", data.detail || "Failed to generate processor");
         setChatMessages(prev => [...prev, { 
           role: "assistant", 
           content: `Error: ${data.detail || "Failed to generate"}`,
         }]);
       }
     } catch (error) {
+      showError("Error", "Failed to generate processor. Make sure Groq API is configured.");
       setChatMessages(prev => [...prev, { 
         role: "assistant", 
         content: "Error generating processor. Make sure Groq API is configured.",
@@ -1365,8 +1371,9 @@ function ScopeNode({ id, data, selected }: NodeProps) {
                       videoPreviewUrl: null,
                       fileName: null,
                     });
-                  } catch (err) {
+                    } catch (err) {
                     console.error("Failed to access webcam:", err);
+                    showError("Webcam access denied", "Please allow camera permissions to use live input");
                   }
                 }
               }}

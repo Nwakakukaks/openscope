@@ -14,6 +14,7 @@ import { useGraphStore } from "@/store/graphStore";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useScopeServer } from "@/hooks/useScopeServer";
 import { supabase } from "@/lib/supabase";
+import { showError, showWarning } from "@/lib/toast";
 
 export default function Home() {
   const [showTemplates, setShowTemplates] = useState(false);
@@ -155,7 +156,7 @@ export default function Home() {
 
   const handleStartStream = useCallback(async () => {
     if (!isScopeConnected) {
-      alert("Please ensure Scope server is running");
+      showWarning("Scope server not connected", "Please ensure Scope server is running");
       return;
     }
 
@@ -281,7 +282,7 @@ export default function Home() {
       console.log("[OpenScope] Video tracks:", localStream?.getVideoTracks().length);
       
       if (!localStream) {
-        alert("Please upload a video in the Video Input node first");
+        showWarning("No video input", "Please upload a video in the Video Input node first");
         setIsLoading(false);
         return;
       }
@@ -294,7 +295,7 @@ export default function Home() {
       
     } catch (err) {
       console.error("Failed to start stream:", err);
-      alert("Failed to start stream: " + (err instanceof Error ? err.message : "Unknown error"));
+      showError("Failed to start stream", err instanceof Error ? err.message : "Unknown error");
     } finally {
       setIsLoading(false);
     }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Search, Check, Layers, Sparkles, Palette, Wand2, Image, Type, Sun, Eye, Github } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
+import { showError } from "@/lib/toast";
 
 interface TemplateModalProps {
   isOpen: boolean;
@@ -57,6 +58,7 @@ export default function TemplateModal({ isOpen, onClose }: TemplateModalProps) {
       setCategories(catData);
     } catch (error) {
       console.error("Failed to fetch templates:", error);
+      showError("Failed to load templates", "Could not connect to template server");
     } finally {
       setLoading(false);
     }
@@ -160,7 +162,6 @@ export default function TemplateModal({ isOpen, onClose }: TemplateModalProps) {
                 <Search className="w-8 h-8 text-muted-foreground" />
               </div>
               <p className="text-muted-foreground">No templates found</p>
-              <p className="text-sm text-muted-foreground mt-1">Try a different search or category</p>
             </div>
           )}
         </div>
