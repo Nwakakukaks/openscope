@@ -21,7 +21,7 @@ class Template(BaseModel):
     github_url: Optional[str] = None
 
 
-# Built-in starter templates - 6 total per mvp-phase.md
+# Built-in starter templates 
 STARTER_TEMPLATES = [
     {
         "id": "blank",

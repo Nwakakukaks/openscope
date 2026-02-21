@@ -47,12 +47,20 @@ const SCOPE_API_URL = "/api/scope";
 
 const getBackendUrl = () => {
   if (typeof window === 'undefined') return '';
-  // Use custom API URL if set (for Vercel deployments)
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  console.log('[DEBUG] NEXT_PUBLIC_API_URL:', apiUrl);
+  console.log('[DEBUG] window.location.hostname:', window.location.hostname);
+  
+  // Use custom API URL if set (for Vercel/Render deployments)
+  if (apiUrl) {
+    console.log('[DEBUG] Using custom API URL:', apiUrl);
+    return apiUrl;
   }
   // In development, use localhost:3001
-  return window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+  const fallbackUrl = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+  console.log('[DEBUG] Using fallback URL:', fallbackUrl);
+  return fallbackUrl;
 };
 
 export function useScopeServer() {
@@ -70,17 +78,26 @@ export function useScopeServer() {
 
   const checkConnection = useCallback(async () => {
     try {
-      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/health`);
+      const backendUrl = getBackendUrl();
+      const fullUrl = `${backendUrl}${SCOPE_API_URL}/health`;
+      console.log('[DEBUG] checkConnection URL:', fullUrl);
+      
+      const response = await fetch(fullUrl);
+      console.log('[DEBUG] checkConnection response:', response.status, response.statusText);
+      
       if (response.ok) {
         setIsConnected(true);
         setError(null);
         return true;
       }
       setIsConnected(false);
+      const errorText = await response.text();
+      setError(`Server returned ${response.status}: ${errorText}`);
       return false;
-    } catch {
+    } catch (err) {
+      console.error('[DEBUG] checkConnection error:', err);
       setIsConnected(false);
-      setError("Cannot connect to Scope server");
+      setError(`Cannot connect to Scope server: ${err}`);
       return false;
     }
   }, []);

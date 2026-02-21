@@ -5,9 +5,9 @@ from fastapi import APIRouter, HTTPException
 
 from pydantic import BaseModel
 
-router = APIRouter()
+from ..config import settings
 
-SCOPE_API_URL = "http://localhost:8000"
+router = APIRouter()
 
 
 class InstallPluginRequest(BaseModel):
@@ -30,7 +30,7 @@ async def list_plugins():
     """List all installed plugins from Scope server."""
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(f"{SCOPE_API_URL}/api/v1/plugins")
+            response = await client.get(f"{settings.scope_api_url}/api/v1/plugins")
             if response.status_code != 200:
                 raise HTTPException(
                     status_code=response.status_code, detail="Failed to fetch plugins"
@@ -61,7 +61,7 @@ async def install_plugin(request: InstallPluginRequest):
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             response = await client.post(
-                f"{SCOPE_API_URL}/api/v1/plugins",
+                f"{settings.scope_api_url}/api/v1/plugins",
                 json={"package": request.package},
             )
             if response.status_code != 200:
@@ -82,7 +82,7 @@ async def uninstall_plugin(plugin_name: str):
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             response = await client.delete(
-                f"{SCOPE_API_URL}/api/v1/plugins/{plugin_name}"
+                f"{settings.scope_api_url}/api/v1/plugins/{plugin_name}"
             )
             if response.status_code != 200:
                 raise HTTPException(
@@ -127,7 +127,7 @@ async def check_plugin(processor_type: str):
 
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.get(f"{SCOPE_API_URL}/api/v1/plugins")
+            response = await client.get(f"{settings.scope_api_url}/api/v1/plugins")
             if response.status_code != 200:
                 raise HTTPException(
                     status_code=response.status_code, detail="Failed to fetch plugins"
@@ -167,7 +167,7 @@ async def install_processor_plugin(processor_type: str):
     async with httpx.AsyncClient(timeout=300.0) as client:
         try:
             # First check if already installed
-            response = await client.get(f"{SCOPE_API_URL}/api/v1/plugins")
+            response = await client.get(f"{settings.scope_api_url}/api/v1/plugins")
             if response.status_code == 200:
                 data = response.json()
                 for plugin in data.get("plugins", []):
@@ -181,7 +181,7 @@ async def install_processor_plugin(processor_type: str):
 
             # Install the plugin
             install_response = await client.post(
-                f"{SCOPE_API_URL}/api/v1/plugins",
+                f"{settings.scope_api_url}/api/v1/plugins",
                 json={"package": package_url},
             )
 
