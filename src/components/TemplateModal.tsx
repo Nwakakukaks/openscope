@@ -289,7 +289,7 @@ export default function TemplateModal({ isOpen, onClose }: TemplateModalProps) {
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="GitHub URL or package name (e.g., https://github.com/user/repo)"
+                    placeholder="GitHub URL or package name"
                     value={installUrl}
                     onChange={(e) => setInstallUrl(e.target.value)}
                     className="flex-1 px-4 py-2 bg-background border border-border rounded-lg text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
@@ -307,15 +307,13 @@ export default function TemplateModal({ isOpen, onClose }: TemplateModalProps) {
                       </>
                     ) : (
                       <>
-                        <ExternalLink className="w-4 h-4" />
+                       
                         Install
                       </>
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Examples: https://github.com/user/plugin-repo, my-plugin, or /path/to/local
-                </p>
+              
               </div>
 
               {/* Installed Plugins */}
@@ -329,7 +327,7 @@ export default function TemplateModal({ isOpen, onClose }: TemplateModalProps) {
                   <div className="text-center py-8 text-muted-foreground">
                     <Plug className="w-12 h-12 mx-auto mb-3 opacity-50" />
                     <p>No plugins installed</p>
-                    <p className="text-sm">Install a plugin above to get started</p>
+                
                   </div>
                 ) : (
                   <div className="space-y-2">

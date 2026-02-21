@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Braces, BrainCog, FolderDown, Library, PictureInPicture, Workflow } from "lucide-react";
+import { Braces, BrainCog, FolderDown, Github, Library, PictureInPicture, Workflow } from "lucide-react";
 
 export default function Home() {
   return (
@@ -36,7 +36,8 @@ export default function Home() {
             <Link href="/app" className="px-8 py-3 bg-[hsl(217,91%,60%)] text-white rounded-lg text-base font-medium hover:bg-[hsl(217,91%,60%)/90] transition-colors">
               Start Building
             </Link>
-            <a href="https://github.com/nwakakukaks/openscope" target="_blank" rel="noopener noreferrer" className="px-8 py-3 border border-[hsl(220,10%,18%)] text-[hsl(220,10%,96%)] rounded-lg text-base font-medium hover:bg-[hsl(220,10%,14%)] transition-colors">
+            <a href="https://github.com/nwakakukaks/openscope" target="_blank" rel="noopener noreferrer" className="px-4 py-3 border border-[hsl(220,10%,18%)] text-[hsl(220,10%,96%)] rounded-lg text-base font-medium hover:bg-[hsl(220,10%,14%)] transition-colors flex items-center gap-2">
+              <Github size={16} />
               View on GitHub
             </a>
           </div>
@@ -44,8 +45,8 @@ export default function Home() {
 
         {/* Hero Image */}
         <div className="max-w-5xl mx-auto mt-16">
-          <Image 
-            src="/hero2.png" 
+          <Image
+            src="/hero2.png"
             alt="OpenScope Visual Builder"
             width={1200}
             height={675}
@@ -66,7 +67,7 @@ export default function Home() {
             {/* Feature 1 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
               <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
-                <PictureInPicture/>
+                <PictureInPicture />
               </div>
               <h3 className="text-lg font-semibold mb-2">Video to AI Output</h3>
               <p className="text-sm text-[hsl(220,9%,55%)]">
@@ -77,7 +78,7 @@ export default function Home() {
             {/* Feature 2 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
               <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
- <Braces />
+                <Braces />
               </div>
               <h3 className="text-lg font-semibold mb-2">Live Code Blocks</h3>
               <p className="text-sm text-[hsl(220,9%,55%)]">
@@ -88,7 +89,7 @@ export default function Home() {
             {/* Feature 3 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
               <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
-                <FolderDown/>
+                <FolderDown />
               </div>
               <h3 className="text-lg font-semibold mb-2">Plugin Export</h3>
               <p className="text-sm text-[hsl(220,9%,55%)]">
@@ -98,8 +99,8 @@ export default function Home() {
 
             {/* Feature 4 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
-            <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
-               <BrainCog/>
+              <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
+                <BrainCog />
               </div>
               <h3 className="text-lg font-semibold mb-2">AI Processor (Beta)</h3>
               <p className="text-sm text-[hsl(220,9%,55%)]">
@@ -110,7 +111,7 @@ export default function Home() {
             {/* Feature 5 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
               <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
-<Library/>
+                <Library />
               </div>
               <h3 className="text-lg font-semibold mb-2">Growing Library</h3>
               <p className="text-sm text-[hsl(220,9%,55%)]">
@@ -121,7 +122,7 @@ export default function Home() {
             {/* Feature 6 */}
             <div className="p-6 rounded-xl border border-[hsl(220,10%,18%)] bg-[hsl(220,12%,9%)]">
               <div className="w-12 h-12 rounded-lg bg-[hsl(217,91%,60%)] flex items-center justify-center mb-4">
-               <Workflow/> 
+                <Workflow />
               </div>
               <h3 className="text-lg font-semibold mb-2">Visual Builder</h3>
               <p className="text-sm text-[hsl(220,9%,55%)]">

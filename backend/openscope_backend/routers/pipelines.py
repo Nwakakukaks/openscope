@@ -39,6 +39,7 @@ class PipelineInfo(BaseModel):
     supported_modes: List[str] = []
     default_mode: Optional[str] = None
     plugin_name: Optional[str] = None
+    usage: List[str] = []
 
 
 class PipelinesResponse(BaseModel):
@@ -124,6 +125,7 @@ async def list_pipelines_simple(
                         supported_modes=schema.get("supported_modes", []),
                         default_mode=schema.get("default_mode"),
                         plugin_name=schema.get("plugin_name"),
+                        usage=schema.get("usage", []),
                     )
                 )
 

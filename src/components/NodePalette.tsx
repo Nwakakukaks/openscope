@@ -57,6 +57,7 @@ interface PipelineInfo {
   supported_modes: string[];
   default_mode?: string;
   plugin_name?: string;
+  usage?: string[];
 }
 
 export default function NodePalette() {
@@ -148,13 +149,13 @@ export default function NodePalette() {
   };
 
   const isPreprocessor = (p: PipelineInfo): boolean => {
-    const id = p.pipeline_id;
-    return id === "yolo_mask" || id === "kaleido-scope-pre";
+    const usage = p.usage || [];
+    return usage.includes("preprocessor");
   };
 
   const isPostprocessor = (p: PipelineInfo): boolean => {
-    const id = p.pipeline_id;
-    return id === "bloom" || id === "cosmic-vfx" || id === "vfx-pack" || id === "kaleido-scope-post";
+    const usage = p.usage || [];
+    return usage.includes("postprocessor");
   };
 
   const pipelineNodes = pipelines

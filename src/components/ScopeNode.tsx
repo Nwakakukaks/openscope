@@ -1164,12 +1164,12 @@ function ScopeNode({ id, data, selected }: NodeProps) {
           isCodeMode: true,
         });
         
-        showSuccess("Processor generated!", "Code added to node. Switch to code mode to edit.");
+        showSuccess("Code added to node. Switch to code mode to view.");
         
         // Add success message to chat
         setChatMessages(prev => [...prev, { 
           role: "assistant", 
-          content: `Generated! Code added to node. Switch to code mode to edit or export.`,
+          content: `Code added to node. Switch to code mode to view.`,
         }]);
         
         setNodeMode("code");
