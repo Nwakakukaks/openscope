@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useRef, useEffect } from "react";
+import { memo, useRef, useEffect, useState, useCallback } from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
 import {
   Video,
@@ -32,6 +32,8 @@ import {
   Tv,
   Loader2,
   Webcam,
+  MessageSquare,
+  Send,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import CodeEditor from "./CodeEditor";
@@ -809,6 +811,16 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const showLeftHandle = !isEntryPoint;
   const showRightHandle = !isOutput;
 
+  // Determine if this is a custom processor node
+  const isCustomProcessor = nodeData.type === "custom" && 
+    (nodeData.config?.createNewKind === "preprocessor" || nodeData.config?.createNewKind === "postprocessor");
+  const processorKind = nodeData.config?.createNewKind as "preprocessor" | "postprocessor" | undefined;
+
+  // Mode state: "chat" | "code" | "visual" - defined early for use in effects
+  const [nodeMode, setNodeMode] = useState<"chat" | "code" | "visual">(
+    isCustomProcessor && !nodeData.config?.pythonCode ? "chat" : isCodeMode ? "code" : "visual"
+  );
+
   // Auto-play input video stream
   useEffect(() => {
     if (nodeData.type === "videoInput" && inputVideoRef.current && nodeData.localStream) {
@@ -827,21 +839,21 @@ function ScopeNode({ id, data, selected }: NodeProps) {
 
   // Auto-initialize code when first entering code mode
   useEffect(() => {
-    if (isCodeMode && !currentCode) {
+    if (nodeMode === "code" && !currentCode) {
       const defaultCode = generateNodeCode(nodeData.type, nodeData.config);
       updateNodeConfig(id, { pythonCode: defaultCode });
     }
-  }, [isCodeMode, currentCode, nodeData.type, nodeData.config, id, updateNodeConfig]);
+  }, [nodeMode, currentCode, nodeData.type, nodeData.config, id, updateNodeConfig]);
 
   // Reactive code updates when parameters change
   useEffect(() => {
-    if (isCodeMode && currentCode) {
+    if (nodeMode === "code" && currentCode) {
       const newCode = generateNodeCode(nodeData.type, nodeData.config);
       if (newCode !== currentCode) {
         updateNodeConfig(id, { pythonCode: newCode });
       }
     }
-  }, [nodeData.config, isCodeMode, currentCode, nodeData.type, id, updateNodeConfig]);
+  }, [nodeData.config, nodeMode, currentCode, nodeData.type, id, updateNodeConfig]);
 
   // Send parameter updates when settings nodes change during streaming
   const settingsNodeTypes = ["noiseSettings", "vaceSettings", "resolutionSettings", "advancedSettings", "loraSettings"];
@@ -971,16 +983,6 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     }
   }, [nodeData.config, nodeData.isStreaming, nodeData.sendParameterUpdate, nodeData.type, isSettingsNode, isEffectNode]);
 
-  const toggleCodeMode = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isCodeMode && !currentCode) {
-      const defaultCode = generateNodeCode(nodeData.type, nodeData.config);
-      updateNodeConfig(id, { isCodeMode: true, pythonCode: defaultCode });
-    } else {
-      updateNodeConfig(id, { isCodeMode: !isCodeMode });
-    }
-  };
-
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isVideo: boolean) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1101,6 +1103,95 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     ? `Main pipeline - runs locally or remotely`
     : NODE_GUIDES[nodeData.type];
 
+  // Chat state
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{role: "user" | "assistant", content: string}[]>([]);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isCustomProcessor && selected && !nodeData.config?.pythonCode && nodeMode !== "chat") {
+      setNodeMode("chat");
+    }
+  }, [isCustomProcessor, selected, nodeData.config?.pythonCode, nodeMode]);
+
+  useEffect(() => {
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages]);
+
+  const handleChatSend = async () => {
+    if (!chatInput.trim() || chatLoading || !processorKind) return;
+    
+    const userMessage = chatInput.trim();
+    setChatInput("");
+    setChatMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    setChatLoading(true);
+
+    try {
+      const response = await fetch("/api/ai/generate-processor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: processorKind,
+          description: userMessage,
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.code) {
+        updateNodeConfig(id, {
+          pythonCode: data.code,
+          code: data.code,
+          isCodeMode: true,
+        });
+        
+        setChatMessages(prev => [...prev, { 
+          role: "assistant", 
+          content: `Generated! Code added to node. Switch to code mode to edit or export.`,
+        }]);
+        
+        setNodeMode("code");
+      } else {
+        setChatMessages(prev => [...prev, { 
+          role: "assistant", 
+          content: `Error: ${data.detail || "Failed to generate"}`,
+        }]);
+      }
+    } catch (error) {
+      setChatMessages(prev => [...prev, { 
+        role: "assistant", 
+        content: "Error generating processor. Make sure Groq API is configured.",
+      }]);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleChatKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleChatSend();
+    }
+  };
+
+  const toggleMode = (newMode: "chat" | "code" | "visual") => {
+    setNodeMode(newMode);
+    if (newMode === "code") {
+      if (!currentCode) {
+        const defaultCode = generateNodeCode(nodeData.type, nodeData.config);
+        updateNodeConfig(id, { isCodeMode: true, pythonCode: defaultCode });
+      } else {
+        updateNodeConfig(id, { isCodeMode: true });
+      }
+    } else {
+      updateNodeConfig(id, { isCodeMode: false });
+    }
+  };
+
+  // Determine if we should show chat button
+  const showChatButton = isCustomProcessor;
+
   return (
     <div
       className={`${NODE_STYLE} ${selected ? "ring-2 ring-primary/50 ring-offset-2 ring-offset-background" : ""}`}
@@ -1133,15 +1224,34 @@ function ScopeNode({ id, data, selected }: NodeProps) {
           )} */}
         </div>
         <div className="flex items-center gap-1 ml-3">
-        {showCodeButton && (
-        <button
-          onClick={toggleCodeMode}
-          className="p-1 hover:bg-accent hover:text-primary rounded transition-colors text-muted-foreground"
-          title={isCodeMode ? "Switch to visual mode" : "Switch to code mode"}
-        >
-          {isCodeMode ? <Eye className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
-        </button>
-        )}
+          {/* Chat mode button for custom processors */}
+          {showChatButton && (
+            <button
+              onClick={() => toggleMode("chat")}
+              className={`p-1 rounded transition-colors ${
+                nodeMode === "chat" 
+                  ? "bg-primary text-primary-foreground" 
+                  : "hover:bg-accent hover:text-primary text-muted-foreground"
+              }`}
+              title="Chat mode - AI generate processor"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {/* Code mode button */}
+          {(showCodeButton || showChatButton) && (
+            <button
+              onClick={() => toggleMode("code")}
+              className={`p-1 rounded transition-colors ${
+                nodeMode === "code" 
+                  ? "bg-primary text-primary-foreground" 
+                  : "hover:bg-accent hover:text-primary text-muted-foreground"
+              }`}
+              title={nodeMode === "code" ? "Code mode" : "Switch to code mode"}
+            >
+              {nodeMode === "code" ? <Eye className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
+            </button>
+          )}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -1155,7 +1265,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
        
       </div>
 
-      {showImagePreview && !isCodeMode && (
+      {showImagePreview && nodeMode !== "code" && nodeMode !== "chat" && (
         <div className="px-3 pb-3 space-y-2">
           <div className="mt-2 rounded overflow-hidden bg-background border border-border aspect-video flex items-center justify-center min-h-[80px]">
             {previewUrl ? (
@@ -1196,7 +1306,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       )}
 
       {/* Video Input: placeholder + choose file or live stream */}
-      {showVideoPreview && !isCodeMode && (
+      {showVideoPreview && nodeMode !== "code" && nodeMode !== "chat" && (
         <div className="px-3 pb-3 space-y-2">
           <div className="mt-2 rounded overflow-hidden bg-background border border-border aspect-video flex items-center justify-center min-h-[80px]">
             {/* Show webcam if streaming, otherwise show file */}
@@ -1281,7 +1391,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       )}
 
       {/* Text Input: show the text content */}
-      {showTextPreview && !isCodeMode && textContent && (
+      {showTextPreview && nodeMode !== "code" && nodeMode !== "chat" && textContent && (
         <div className="px-3 pb-3 space-y-2">
           <div className="mt-2 rounded bg-muted/50 border border-border p-2 min-h-[40px] max-h-[80px] overflow-y-auto">
             <p className="text-xs text-foreground whitespace-pre-wrap break-words">{textContent}</p>
@@ -1290,7 +1400,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       )}
 
       {/* Output Nodes: show processed video stream */}
-      {isOutput && !isCodeMode && (
+      {isOutput && nodeMode !== "code" && nodeMode !== "chat" && (
         <div className="px-3 pb-3 space-y-2">
           <div className="mt-2 rounded overflow-hidden bg-background border border-border aspect-video flex items-center justify-center min-h-[80px]">
             {nodeData.isStreaming && nodeData.remoteStream ? (
@@ -1310,7 +1420,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       )}
 
       {/* Code mode editor */}
-      {isCodeMode && (
+      {nodeMode === "code" && (
         <div className="px-3 pb-3 mt-2 border-t border-border/40">
           <CodeEditor
             value={String(nodeData.config?.pythonCode || generateNodeCode(nodeData.type, nodeData.config))}
@@ -1320,8 +1430,57 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         </div>
       )}
 
+      {/* Chat mode for custom processors */}
+      {nodeMode === "chat" && isCustomProcessor && (
+        <div className="px-3 pb-3 mt-2 border-t border-border/40 space-y-2 min-w-12">
+          <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">
+            Describe what you want this {processorKind} to do..
+          </div>
+          
+          {/* Chat messages */}
+          <div className="space-y-2 max-h-[150px] overflow-y-auto">
+            {chatMessages.map((msg, idx) => (
+              <div key={idx} className={`text-xs p-2 rounded ${
+                msg.role === "user" 
+                  ? "bg-primary/10 text-foreground" 
+                  : "bg-muted/50 text-muted-foreground"
+              }`}>
+                {msg.content}
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Generating...
+              </div>
+            )}
+            <div ref={chatMessagesEndRef} />
+          </div>
+          
+          {/* Chat input */}
+          <div className="flex gap-1">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={handleChatKeyDown}
+              placeholder="e.g., Add a pixelate effect..."
+              className="flex-1 px-2 py-1.5 bg-background border border-border rounded text-xs"
+              disabled={chatLoading}
+            />
+            <button
+              onClick={handleChatSend}
+              disabled={!chatInput.trim() || chatLoading}
+              className="px-2 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50"
+            >
+              <Send className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Config summary for non-input nodes without inline preview */}
-      {configPreview && !showImagePreview && !showVideoPreview && !isCodeMode && !isOutput && (
+      {configPreview && !showImagePreview && !showVideoPreview && nodeMode !== "code" && nodeMode !== "chat" && !isOutput && (
         <div className="px-3 py-2 bg-background/50 border-t border-border/40">
           <div className="text-xs text-muted-foreground truncate">{configPreview}</div>
         </div>

@@ -92,34 +92,32 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
 
       // Handle Create New (Beta) from pre/post processor categories
       if (nodeType === "pipeline_customPreprocessor") {
-        addNode(nodeType, position, { createNewKind: "preprocessor" });
-        window.dispatchEvent(new CustomEvent('openscope:open-ai-assistant', { 
-          detail: { kind: "preprocessor", position } 
-        }));
+        addNode("custom", position, { 
+          createNewKind: "preprocessor",
+          name: "Custom Preprocessor",
+          isCodeMode: true,
+        });
         return;
       }
       if (nodeType === "pipeline_customPostprocessor") {
-        addNode(nodeType, position, { createNewKind: "postprocessor" });
-        window.dispatchEvent(new CustomEvent('openscope:open-ai-assistant', { 
-          detail: { kind: "postprocessor", position } 
-        }));
+        addNode("custom", position, { 
+          createNewKind: "postprocessor",
+          name: "Custom Postprocessor",
+          isCodeMode: true,
+        });
         return;
       }
 
       if (nodeType === "parameters" && createNewKind) {
         addNode(nodeType, position, { createNewKind });
       } else if (createNewKind === "preprocessor" || createNewKind === "postprocessor") {
-        // Add the custom node without selecting it (so parameter panel doesn't open)
+        // Add the custom node - the in-canvas chat will appear when selected
         addNode("custom", position, { 
           createNewKind,
           name: createNewKind === "preprocessor" ? "Custom Preprocessor" : "Custom Postprocessor",
           code: "# Describe your processor and AI will generate the code",
           isCodeMode: true,
-        }, { selectNode: false });
-        // Trigger AI modal to open
-        window.dispatchEvent(new CustomEvent('openscope:open-ai-assistant', { 
-          detail: { kind: createNewKind, position } 
-        }));
+        });
       } else if (pipelineId) {
         // Pass pipelineId from drag data to addNode
         addNode(nodeType, position, { pipelineId });
