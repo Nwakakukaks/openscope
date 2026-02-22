@@ -16,6 +16,7 @@ import {
   BrainCog,
   FileUp,
   Webcam,
+  Send,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import CodeEditor from "./CodeEditor";
@@ -581,7 +582,7 @@ def process(frames, **kwargs):
               />
             ) : (
               <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                Waiting for pipeline...
+                Start streaming to see output
               </div>
             )}
           </div>
@@ -596,7 +597,7 @@ def process(frames, **kwargs):
             <button
               onClick={() => {
                 const guideContent = processorKind === "preprocessor"
-                  ? `We've got a growing set of pre-processor effect you can create right now, just input what you want and it's gets created by the agent!
+                  ? `We've got a growing set of pre-processor effect you can create right now, just describe what you want and it's gets created by the agent!
 
 📷 GRAYSCALE
 Convert video to black & white — lightweight, no model needed
@@ -613,9 +614,9 @@ Generate depth maps from video — powers VACE structural guidance
 🔮 KALEIDOSCOPE Pre
 Mirror symmetry with N-fold rotational patterns — create stunning reflective effects
 
-..with many more coming soon!`
+With many more coming soon!`
 
-                  : `We've got a growing set of post processor effect you can create right now, just input what you want and it's gets created by the agent! 
+                  : `We've got a growing set of post processor effect you can create right now, just describe what you want and it's gets created by the agent! 
 
 ✨ CHROMATIC ABERRATION
 RGB channel displacement — that classic lens imperfection look
@@ -635,13 +636,13 @@ RGB split, scanlines, digital artifacts — digital corruption looks
 💫 BLOOM
 Soft glow around bright areas — dreamy aesthetic
 
-..with many more coming soon!`;
+With many more coming soon!`;
 
                 addNode("noteGuide", { x: 100, y: 100 }, { title: `${processorKind} Guide (Beta)`, content: guideContent });
               }}
               className="text-primary hover:text-primary/80 underline font-medium"
             >
-              Here' some ideas to explore
+              Here's some ideas to explore
             </button>
 
           </div>
@@ -677,9 +678,13 @@ Soft glow around bright areas — dreamy aesthetic
             <button
               onClick={handleChatSend}
               disabled={chatLoading || !chatInput.trim()}
-              className="p-1.5 bg-primary text-primary-foreground rounded disabled:opacity-50"
+              className="py-1.5 px-2 bg-primary text-primary-foreground rounded disabled:opacity-50 flex items-center justify-center"
             >
-              <Loader2 className={`w-3 h-3 ${chatLoading ? "animate-spin" : ""}`} />
+              {chatLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Send className="w-3 h-3" />
+              )}
             </button>
           </div>
         </div>

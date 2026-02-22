@@ -25,8 +25,8 @@ class Template(BaseModel):
 STARTER_TEMPLATES = [
     {
         "id": "blank",
-        "name": "Blank Plugin",
-        "description": "Start from scratch - add your own pre/post processors",
+        "name": "Starter Plugin",
+        "description": "Start from scratch - add your own pipelines an pre/post processors",
         "category": "Starter",
         "icon": "📄",
         "nodes": [
@@ -146,7 +146,7 @@ STARTER_TEMPLATES = [
     # Post-processor templates
     {
         "id": "bloom-post",
-        "name": "Bloom Postprocessor",
+        "name": "Bloom",
         "description": "Bloom/glow effect - adds soft light around bright areas",
         "category": "Postprocessor",
         "icon": "✨",
@@ -188,7 +188,7 @@ STARTER_TEMPLATES = [
     },
     {
         "id": "cosmic-vfx-post",
-        "name": "Cosmic VFX Postprocessor",
+        "name": "Cosmic VFX ",
         "description": "Real-time VFX: Glitch, Retro, Distortion, Color, Blend, Edge, Blur, and more",
         "category": "Postprocessor",
         "icon": "🚀",
@@ -248,7 +248,7 @@ STARTER_TEMPLATES = [
     },
     {
         "id": "vfx-pack-post",
-        "name": "VFX Pack Postprocessor",
+        "name": "VFX Pack ",
         "description": "GPU-accelerated VFX: chromatic aberration, VHS/retro CRT, halftone",
         "category": "Postprocessor",
         "icon": "🎬",

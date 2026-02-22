@@ -46,13 +46,6 @@ const COMPREHENSIVE_NODE_KNOWLEDGE = `
 - **chromatic**: RGB channel displacement. Parameters: enabled, intensity (0-1), angle (0-360)
 - **vhs**: Retro VHS/CRT effect. Parameters: enabled, scanLineIntensity, scanLineCount, noise, tracking
 - **halftone**: Newspaper dot pattern. Parameters: enabled, dotSize (4-20), sharpness (0-1)
-- **vignette**: Edge darkening. Parameters: intensity (0-1), smoothness (0-1)
-- **colorGrading**: Professional color correction. Parameters: temperature (-100 to 100), tint (-100 to 100), saturation (-100 to 100), contrast (-100 to 100)
-- **brightness**: Adjust brightness. Parameters: value (-100 to 100)
-- **contrast**: Adjust contrast. Parameters: value (0 to 3)
-- **blur**: Gaussian blur. Parameters: radius (0-50)
-- **mirror**: Flip video. Parameters: mode (horizontal/vertical/both)
-- **blend**: Blend two sources. Parameters: mode (add/multiply/screen/overlay), opacity (0-1)
 
 ### 7. AI PRE/POST-PROCESSORS (from Scope server)
 - **segmentation**: AI segmentation. Parameters: model (sam/sam2/yolo), targetClass

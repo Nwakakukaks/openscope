@@ -20,6 +20,183 @@ const PIPELINE_EFFECT_IDS = [
   "kaleido-scope", "yolo_mask", "bloom", "cosmic-vfx", "vfx-pack", "customPreprocessor", "customPostprocessor"
 ];
 
+// Sample plugin code for export - KaleidoScope example
+const SAMPLE_PLUGIN: Record<string, { pipeline: string; schema: string }> = {};
+
+function getSampleCode(pipelineId: string) {
+  if (pipelineId === "kaleido-scope") {
+    return {
+      pipeline: `"""KaleidoScope - GPU kaleidoscope/mirror effect"""
+from typing import TYPE_CHECKING
+import torch
+from scope.core.pipelines.interface import Pipeline, Requirements
+
+if TYPE_CHECKING:
+    from scope.core.pipelines.base_schema import BasePipelineConfig
+
+
+def kaleido_effect(frames, enabled=True, mix=1.0, mirror_mode="none", rotational_enabled=True, rotational_slices=6, rotation_deg=0.0, zoom=1.0, warp=0.0):
+    import math
+    import torch.nn.functional as F
+    
+    if not enabled:
+        return frames
+    
+    T, H, W, C = frames.shape
+    device = frames.device
+    
+    grid_y = torch.linspace(-1, 1, H, device=device)
+    grid_x = torch.linspace(-1, 1, W, device=device)
+    gy, gx = torch.meshgrid(grid_y, grid_x, indexing='ij')
+    
+    if warp != 0:
+        r = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        theta = torch.atan2(gy, gx)
+        r = r + warp * r * r
+        gx = r * torch.cos(theta)
+        gy = r * torch.sin(theta)
+    
+    if zoom != 1.0:
+        gx = gx / zoom
+        gy = gy / zoom
+    
+    if mirror_mode == "2x":
+        gx = torch.abs(gx)
+    elif mirror_mode == "4x":
+        gx = torch.abs(gx)
+        gy = torch.abs(gy)
+    
+    if rotational_enabled and rotational_slices >= 2:
+        r = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        theta = torch.atan2(gy, gx)
+        theta = theta + math.radians(rotation_deg)
+        wedge = 2 * math.pi / rotational_slices
+        phi = torch.remainder(theta, wedge)
+        phi = torch.minimum(phi, wedge - phi)
+        gx = r * torch.cos(phi)
+        gy = r * torch.sin(phi)
+    
+    gx = gx.clamp(-1, 1)
+    gy = gy.clamp(-1, 1)
+    grid = torch.stack([gx, gy], dim=-1)
+    grid = grid.unsqueeze(0).unsqueeze(0).expand(T, -1, -1, -1)
+    
+    frames_nchw = frames.permute(0, 3, 1, 2)
+    sampled = F.grid_sample(frames_nchw, grid, mode='bilinear', padding_mode='border', align_corners=True)
+    result = sampled.permute(0, 2, 3, 1)
+    
+    if mix < 1.0:
+        result = frames * (1 - mix) + result * mix
+    
+    return result.clamp(0, 1)
+
+
+class KaleidoScopePipeline(Pipeline):
+    @classmethod
+    def get_config_class(cls):
+        from .schema import KaleidoScopeConfig
+        return KaleidoScopeConfig
+
+    def __init__(self, device=None, **kwargs):
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def prepare(self, **kwargs):
+        return Requirements(input_size=1)
+
+    def __call__(self, **kwargs):
+        video = kwargs.get("video")
+        if video is None:
+            raise ValueError("KaleidoScope requires video input")
+        
+        frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        
+        out = kaleido_effect(
+            frames=frames,
+            enabled=kwargs.get("enabled", True),
+            mix=kwargs.get("mix", 1.0),
+            mirror_mode=kwargs.get("mirror_mode", "none"),
+            rotational_enabled=kwargs.get("rotational_enabled", True),
+            rotational_slices=kwargs.get("rotational_slices", 6),
+            rotation_deg=kwargs.get("rotation_deg", 0.0),
+            zoom=kwargs.get("zoom", 1.0),
+            warp=kwargs.get("warp", 0.0),
+        )
+        return {"video": out.clamp(0, 1)}
+
+
+def register(register_fn):
+    register_fn(KaleidoScopePipeline)
+`,
+      schema: `"""KaleidoScope Config Schema"""
+from pydantic import Field
+from scope.core.pipelines.base_schema import BasePipelineConfig, ModeDefaults, ui_field_config
+
+
+class KaleidoScopeConfig(BasePipelineConfig):
+    pipeline_id = "kaleido-scope"
+    pipeline_name = "Kaleido Scope"
+    pipeline_description = "GPU kaleidoscope/mirror effect - 2x/4x, N-fold symmetry, rotation, zoom, warp"
+    supports_prompts = False
+    modes = {"video": ModeDefaults(default=True)}
+    usage = []
+    
+    enabled: bool = Field(
+        default=True,
+        description="Enable kaleidoscope effect",
+        json_schema_extra=ui_field_config(order=1, label="Enabled"),
+    )
+    mix: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description="Blend original (0) to fully effected (1)",
+        json_schema_extra=ui_field_config(order=2, label="Mix"),
+    )
+    mirror_mode: str = Field(
+        default="none",
+        description="Mirror symmetry mode: none, 2x, 4x",
+        json_schema_extra=ui_field_config(order=3, label="Mirror Mode"),
+    )
+    rotational_enabled: bool = Field(
+        default=True,
+        description="Enable N-fold rotational symmetry",
+        json_schema_extra=ui_field_config(order=4, label="Rotational Symmetry"),
+    )
+    rotational_slices: int = Field(
+        default=6,
+        ge=3,
+        le=12,
+        description="Number of symmetry slices (N)",
+        json_schema_extra=ui_field_config(order=5, label="Slices"),
+    )
+    rotation_deg: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=360.0,
+        description="Rotate pattern (degrees)",
+        json_schema_extra=ui_field_config(order=6, label="Rotation"),
+    )
+    zoom: float = Field(
+        default=1.0,
+        ge=0.5,
+        le=2.0,
+        description="Zoom into source before symmetry",
+        json_schema_extra=ui_field_config(order=7, label="Zoom"),
+    )
+    warp: float = Field(
+        default=0.0,
+        ge=-0.5,
+        le=0.5,
+        description="Radial warp amount",
+        json_schema_extra=ui_field_config(order=8, label="Warp"),
+    )
+`,
+    };
+  }
+  return undefined;
+}
+
 const KALEIDO_HELPER = `def _apply_kaleido(video, slices=6, rotation=0, zoom=1.0):
     import math
     import torch.nn.functional as F
@@ -1893,10 +2070,19 @@ export function generatePluginFiles(nodes: any[], edges: any[]): Record<string, 
   const pascalName = toPascalCase(pluginId);
   const snakeName = pluginId.replace(/-/g, "_");
   
-  const pluginCode = generatePlugin(nodes, edges);
+  // Check for embedded sample code
+  const sampleCode = getSampleCode(pluginId);
   
-  // Extract schema from the generated plugin code for the schema file
-  const schemaCode = extractSchemaFromPlugin(pluginCode, pascalName);
+  let pluginCode: string;
+  let schemaCode: string;
+  
+  if (sampleCode) {
+    pluginCode = sampleCode.pipeline;
+    schemaCode = sampleCode.schema;
+  } else {
+    pluginCode = generatePlugin(nodes, edges);
+    schemaCode = extractSchemaFromPlugin(pluginCode, pascalName);
+  }
   
   return {
     "pyproject.toml": generatePyprojectToml(pluginId, snakeName),

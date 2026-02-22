@@ -84,7 +84,7 @@ export default function Header({
     }
 
     try {
-      const files = generatePluginFiles(nodes, edges);
+      const files = await generatePluginFiles(nodes, edges);
       const zip = new JSZip();
       
       for (const [filename, content] of Object.entries(files)) {
@@ -189,6 +189,7 @@ export default function Header({
           <button
             onClick={() => setShowExportMenu(!showExportMenu)}
             className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium"
+            data-tour="header-export"
           >
             <Download className="w-4 h-4" />
             Export
@@ -248,11 +249,12 @@ export default function Header({
   );
 }
 
-function ActionButton({ icon: Icon, label, onClick }: { icon: React.ComponentType<{ className?: string }>; label: string; onClick?: () => void }) {
+function ActionButton({ icon: Icon, label, onClick, ...props }: { icon: React.ComponentType<{ className?: string }>; label: string; onClick?: () => void; [key: string]: unknown }) {
   return (
     <button
       onClick={onClick}
       className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors font-medium"
+      {...props}
     >
       <Icon className="w-4 h-4" />
       {label}

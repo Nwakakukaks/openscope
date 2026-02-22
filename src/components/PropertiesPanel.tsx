@@ -105,7 +105,13 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
   ],
 };
 
-export default function PropertiesPanel() {
+interface PropsPanelProps {
+  forceShow?: boolean;
+  sendParameterUpdate?: (params: Record<string, unknown>) => void;
+  isStreaming?: boolean;
+}
+
+export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStreaming }: PropsPanelProps) {
   const nodes = useGraphStore((state) => state.nodes);
   const selectedNode = useGraphStore((state) => state.selectedNode);
   const updateNodeConfig = useGraphStore((state) => state.updateNodeConfig);
@@ -181,7 +187,34 @@ export default function PropertiesPanel() {
   }, [handleClose]);
 
   const node = nodes.find((n) => n.id === selectedNode);
-  if (!node) return null;
+  if (!node) {
+    if (forceShow) {
+      return (
+        <div data-tour="properties-panel" className="absolute right-0 top-0 h-full z-50" onClick={(e) => e.stopPropagation()}>
+          <aside className="w-80 bg-card border-l border-border flex flex-col shrink-0 h-full" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 border-b border-border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Settings2 className="w-5 h-5 text-primary" />
+                  <h2 className="text-sm font-semibold text-foreground">Properties</h2>
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              <div className="text-center py-8">
+                <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-muted flex items-center justify-center">
+                  <Info className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground">Select a node</p>
+                <p className="text-xs text-muted-foreground mt-1">Click on any node to configure its properties</p>
+              </div>
+            </div>
+          </aside>
+        </div>
+      );
+    }
+    return null;
+  }
 
   const nodeType = node.data.type;
   const isPipelineNode = nodeType.startsWith("pipeline_") || nodeType === "pipeline";
@@ -289,6 +322,15 @@ export default function PropertiesPanel() {
     configFields = nodeConfigs[configKey];
   }
 
+  const handleConfigChange = (key: string, newValue: unknown) => {
+    updateNodeConfig(node.id, { [key]: newValue });
+    
+    if (sendParameterUpdate && isStreaming) {
+      const paramKey = key.charAt(0).toLowerCase() + key.slice(1);
+      sendParameterUpdate({ [paramKey]: newValue });
+    }
+  };
+
   return (
     <div data-tour="properties-panel" className="absolute right-0 top-0 h-full z-50" onClick={(e) => e.stopPropagation()}>
       <aside className="w-80 bg-card border-l border-border flex flex-col shrink-0 h-full" onClick={(e) => e.stopPropagation()}>
@@ -352,7 +394,7 @@ export default function PropertiesPanel() {
                           value={String(value)}
                           readOnly={field.readonly}
                           onChange={(e) =>
-                            !field.readonly && updateNodeConfig(node.id, { [field.label]: e.target.value })
+                            !field.readonly && handleConfigChange(field.label, e.target.value)
                           }
                         />
                       )}
@@ -363,7 +405,7 @@ export default function PropertiesPanel() {
                           rows={field.label === "Content" ? 22 : 3}
                           value={String(value)}
                           onChange={(e) =>
-                            updateNodeConfig(node.id, { [field.label]: e.target.value })
+                            handleConfigChange(field.label, e.target.value)
                           }
                         />
                       )}
@@ -376,7 +418,7 @@ export default function PropertiesPanel() {
                           max={field.max}
                           value={Number(value)}
                           onChange={(e) =>
-                            updateNodeConfig(node.id, { [field.label]: parseFloat(e.target.value) })
+                            handleConfigChange(field.label, parseFloat(e.target.value))
                           }
                         />
                       )}
@@ -396,7 +438,7 @@ export default function PropertiesPanel() {
                             step={0.1}
                             value={Number(value)}
                             onChange={(e) =>
-                              updateNodeConfig(node.id, { [field.label]: parseFloat(e.target.value) })
+                              handleConfigChange(field.label, parseFloat(e.target.value))
                             }
                           />
                         </div>
@@ -407,7 +449,7 @@ export default function PropertiesPanel() {
                           className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
                           value={String(value)}
                           onChange={(e) =>
-                            updateNodeConfig(node.id, { [field.label]: e.target.value })
+                            handleConfigChange(field.label, e.target.value)
                           }
                         >
                           {pipelinesLoading ? (
@@ -429,7 +471,7 @@ export default function PropertiesPanel() {
                           onChange={(e) =>
                             nodeType === "pluginConfig"
                               ? handlePluginConfigChange(field.label, e.target.value)
-                              : updateNodeConfig(node.id, { [field.label]: e.target.value })
+                              : handleConfigChange(field.label, e.target.value)
                           }
                         >
                           {(field.label === "pipelineId" && (nodeType === "pluginConfig" || nodeType === "pipeline" || isPipelineNode)) ? (
@@ -457,13 +499,13 @@ export default function PropertiesPanel() {
                           type="button"
                           disabled={field.readonly}
                           onClick={() =>
-                            !field.readonly && updateNodeConfig(node.id, { [field.label]: !value })
+                            !field.readonly && handleConfigChange(field.label, !value)
                           }
                           className={`w-8 h-4 rounded-full transition-colors ${value ? "bg-primary" : "bg-background border border-border"} ${field.readonly ? "opacity-50 cursor-not-allowed" : ""}`}
                         >
                           <div
                             className={`w-3 h-3 rounded-full bg-white shadow transition-transform ${value ? "translate-x-4" : "translate-x-0.5"
-                              }`}
+                                }`}
                           />
                         </button>
                       )}

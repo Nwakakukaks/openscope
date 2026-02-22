@@ -25,6 +25,7 @@ export default function Home() {
   const [showAuth, setShowAuth] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [tourPropertiesPanel, setTourPropertiesPanel] = useState(false);
 
   useEffect(() => {
     const hasTour = hasSeenTour();
@@ -352,9 +353,9 @@ export default function Home() {
         onStartStream={handleStartStream}
         onStopStream={handleStopStream}
       />
-      <div className="flex-1 flex min-h-0 w-full">
+      <div className="flex-1 flex min-h-0 w-full relative">
         {sidebarOpen && <NodePalette />}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           <NodeCanvas
             localStream={localStream}
             remoteStream={remoteStream}
@@ -363,7 +364,7 @@ export default function Home() {
           />
 
         </div>
-        {selectedNode && <PropertiesPanel />}
+        {selectedNode || tourPropertiesPanel ? <PropertiesPanel forceShow={tourPropertiesPanel} sendParameterUpdate={sendParameterUpdate} isStreaming={isStreaming} /> : null}
       </div>
 
       {/* Modals */}
@@ -399,6 +400,7 @@ export default function Home() {
         isOpen={showTour}
         onClose={() => setShowTour(false)}
         onComplete={() => setShowTour(false)}
+        onStepChange={(step) => setTourPropertiesPanel(step !== null)}
       />
     </div>
   );

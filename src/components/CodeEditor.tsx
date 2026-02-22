@@ -31,8 +31,8 @@ export default function CodeEditor({ value, onChange, onClick }: CodeEditorProps
         style={{
           fontFamily: '"Fira Code", "JetBrains Mono", monospace',
           fontSize: 11,
-          minHeight: 200,
-          maxHeight: 300,
+          minHeight: 300,
+          maxHeight: 500,
           overflow: 'hidden',
         }}
         textareaClassName="focus:outline-none"

@@ -14,6 +14,7 @@ interface TourModalProps {
   isOpen: boolean;
   onClose: () => void;
   onComplete: () => void;
+  onStepChange?: (step: number | null) => void;
 }
 
 const TOUR_STEPS: TourStep[] = [
@@ -21,7 +22,7 @@ const TOUR_STEPS: TourStep[] = [
     target: "[data-tour='header-templates']",
     title: "Templates & Plugins",
     description: "Start with pre-built templates or install plugins from the community to extend functionality.",
-    position: "bottom",
+    position: "right",
   },
   {
     target: "[data-tour='node-palette']",
@@ -47,6 +48,12 @@ const TOUR_STEPS: TourStep[] = [
     description: "Click play to start the pipeline. Your video will appear in the preview area.",
     position: "bottom",
   },
+  {
+    target: "[data-tour='header-export']",
+    title: "Export Your Plugin",
+    description: "Export your workflow as a plugin ZIP file that can be installed in Daydream Scope.",
+    position: "bottom",
+  },
 ];
 
 const STORAGE_KEY = "openscope_tour_completed";
@@ -60,10 +67,11 @@ export function markTourCompleted(): void {
   localStorage.setItem(STORAGE_KEY, "true");
 }
 
-export default function TourModal({ isOpen, onClose, onComplete }: TourModalProps) {
+export default function TourModal({ isOpen, onClose, onComplete, onStepChange }: TourModalProps) {
   const [currentStep, setCurrentStep] = useState(-1);
   const [showWelcome, setShowWelcome] = useState(true);
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0 });
+  const [highlightRect, setHighlightRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   const stepRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,43 +84,89 @@ export default function TourModal({ isOpen, onClose, onComplete }: TourModalProp
         const scrollX = window.scrollX;
         const scrollY = window.scrollY;
 
+        setHighlightRect({
+          top: rect.top + scrollY,
+          left: rect.left + scrollX,
+          width: rect.width,
+          height: rect.height,
+        });
+
         let top = 0;
         let left = 0;
+        const padding = 12;
+        const tooltipWidth = 320;
+        const tooltipHeight = 200;
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
 
         switch (step.position) {
           case "top":
-            top = rect.top + scrollY - 12;
-            left = rect.left + scrollX + rect.width / 2;
+            top = rect.top + scrollY - tooltipHeight - padding;
+            left = rect.left + scrollX + rect.width / 2 - tooltipWidth / 2;
             break;
           case "bottom":
-            top = rect.bottom + scrollY + 12;
-            left = rect.left + scrollX + rect.width / 2;
+            top = rect.bottom + scrollY + padding;
+            left = rect.left + scrollX + rect.width / 2 - tooltipWidth / 2;
             break;
           case "left":
-            top = rect.top + scrollY + rect.height / 2;
-            left = rect.left + scrollX - 12;
+            top = rect.top + scrollY + rect.height / 2 - tooltipHeight / 2;
+            left = rect.left + scrollX - tooltipWidth - padding;
             break;
           case "right":
-            top = rect.top + scrollY + rect.height / 2;
-            left = rect.right + scrollX + 12;
+            top = rect.top + scrollY + rect.height / 2 - tooltipHeight / 2;
+            left = rect.right + scrollX + padding;
             break;
         }
 
+        if (left < 10) left = 10;
+        if (left + tooltipWidth > viewportWidth - 10) left = viewportWidth - tooltipWidth - 10;
+        if (top < 10) top = 10;
+        if (top + tooltipHeight > viewportHeight - 10) top = viewportHeight - tooltipHeight - 10;
+
         setTooltipPosition({ top, left });
       }
+    } else {
+      setHighlightRect(null);
     }
   }, [currentStep]);
 
   useEffect(() => {
     const handleScroll = () => {
-      if (currentStep >= 0) {
-        setCurrentStep(-1);
+      if (currentStep >= 0 && highlightRect) {
+        const step = TOUR_STEPS[currentStep];
+        const targetEl = document.querySelector(step.target);
+        if (targetEl) {
+          const rect = targetEl.getBoundingClientRect();
+          const scrollX = window.scrollX;
+          const scrollY = window.scrollY;
+          setHighlightRect({
+            top: rect.top + scrollY,
+            left: rect.left + scrollX,
+            width: rect.width,
+            height: rect.height,
+          });
+        }
       }
     };
 
     window.addEventListener("scroll", handleScroll, true);
-    return () => window.removeEventListener("scroll", handleScroll, true);
-  }, [currentStep]);
+    window.addEventListener("resize", handleScroll);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleScroll);
+    };
+  }, [currentStep, highlightRect]);
+
+  useEffect(() => {
+    if (onStepChange) {
+      if (currentStep >= 0 && TOUR_STEPS[currentStep]?.target === "[data-tour='properties-panel']") {
+        onStepChange(currentStep);
+      } else {
+        onStepChange(null);
+      }
+    }
+  }, [currentStep, onStepChange]);
 
   const handleStart = () => {
     setShowWelcome(false);
@@ -148,9 +202,35 @@ export default function TourModal({ isOpen, onClose, onComplete }: TourModalProp
 
   return (
     <>
+      {/* Gray overlay with cutout */}
+      {currentStep >= 0 && highlightRect && (
+        <div className="fixed inset-0 z-[9999] pointer-events-none">
+          {/* Top */}
+          <div className="absolute top-0 left-0 right-0" style={{ height: highlightRect.top }} />
+          {/* Left */}
+          <div className="absolute top-0 bottom-0 left-0" style={{ width: highlightRect.left }} />
+          {/* Right */}
+          <div className="absolute top-0 bottom-0" style={{ left: highlightRect.left + highlightRect.width }} />
+          {/* Bottom */}
+          <div className="absolute bottom-0 left-0 right-0" style={{ top: highlightRect.top + highlightRect.height }} />
+          {/* Highlight border */}
+          <div
+            className="absolute border-2 border-primary rounded-md pointer-events-none animate-pulse"
+            style={{
+              zIndex: 10000,
+              top: highlightRect.top - 4,
+              left: highlightRect.left - 4,
+              width: highlightRect.width + 8,
+              height: highlightRect.height + 8,
+              boxShadow: "0 0 20px rgba(59, 130, 246, 0.5)",
+            }}
+          />
+        </div>
+      )}
+
       {showWelcome ? (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="absolute inset-0  backdrop-blur-sm" />
           <div className="relative w-[480px] bg-card rounded-2xl shadow-2xl border border-border p-8">
             <button
               onClick={handleSkip}
