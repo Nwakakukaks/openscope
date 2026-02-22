@@ -23,7 +23,6 @@ interface GraphState {
   edges: Edge[];
   selectedNode: string | null;
   
-  // Node operations
   addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>, options?: { selectNode?: boolean }) => void;
   addNodesWithEdges: (nodes: Array<{ type: string; position: { x: number; y: number }; config?: Record<string, unknown> }>, edges?: Array<{ source: number; target: number }>) => void;
   addOutputNode: () => void;
@@ -33,7 +32,6 @@ interface GraphState {
   selectNode: (nodeId: string | null) => void;
   clearAll: () => void;
   
-  // Edge operations
   onNodesChange: OnNodesChange<Node<NodeData>>;
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: OnConnect;
@@ -64,192 +62,12 @@ export const nodeDefaults: Record<string, Partial<NodeData>> = {
     label: "Parameters",
     config: {},
   },
-  brightness: {
-    label: "Brightness",
-    config: { value: 0 },
-  },
-  contrast: {
-    label: "Contrast",
-    config: { value: 1 },
-  },
-  blur: {
-    label: "Blur",
-    config: { radius: 5 },
-  },
-  mirror: {
-    label: "Mirror",
-    config: { mode: "horizontal" },
-  },
-  kaleido: {
-    label: "Kaleido",
-    config: { slices: 6, rotation: 0 },
-  },
-  kaleidoscope: {
-    label: "Kaleidoscope",
-    config: { 
-      enabled: true,
-      mix: 1.0,
-      mirrorMode: "none",
-      rotationalEnabled: true,
-      rotationalSlices: 6,
-      rotationDeg: 0.0,
-      zoom: 1.0,
-      warp: 0.0,
-    },
-  },
-  blend: {
-    label: "Blend",
-    config: { mode: "add", opacity: 0.5 },
-  },
-  mask: {
-    label: "Mask",
-    config: { targetClass: "person" },
-  },
-  // Preprocessor-specific effects
-  segmentation: {
-    label: "Segmentation",
-    config: { model: "sam", targetClass: "all" },
-  },
-  depthEstimation: {
-    label: "Depth Estimation",
-    config: { model: "depth-anything" },
-  },
-  backgroundRemoval: {
-    label: "Background Removal",
-    config: { model: "u2net" },
-  },
-  // Postprocessor-specific effects
-  colorGrading: {
-    label: "Color Grading",
-    config: { temperature: 0, tint: 0, saturation: 0, contrast: 0 },
-  },
-  upscaling: {
-    label: "Upscaling",
-    config: { scale: 2, model: "realesrgan" },
-  },
-  denoising: {
-    label: "Denoising",
-    config: { strength: 0.5, method: "bm3d" },
-  },
-  styleTransfer: {
-    label: "Style Transfer",
-    config: { style: "anime", strength: 0.7 },
-  },
-  vignette: {
-    label: "Vignette",
-    config: { intensity: 0.5, smoothness: 0.5 },
-  },
-  // VFX Pack effects (from scope-vfx)
-  chromatic: {
-    label: "Chromatic Aberration",
-    config: { enabled: true, intensity: 0.3, angle: 0 },
-  },
-  vhs: {
-    label: "VHS / Retro CRT",
-    config: { enabled: false, scanLineIntensity: 0.3, scanLineCount: 100, noise: 0.1, tracking: 0.2 },
-  },
-  halftone: {
-    label: "Halftone",
-    config: { enabled: false, dotSize: 8, sharpness: 0.7 },
-  },
-  // VFX plugins (full effects)
-  bloom: {
-    label: "Bloom",
-    config: { 
-      threshold: 0.8,
-      softKnee: 0.5,
-      intensity: 1.0,
-      radius: 8,
-      downsample: 1,
-      debug: false,
-    },
-  },
-  cosmicVFX: {
-    label: "Cosmic VFX",
-    config: {
-      enableGlitch: true,
-      glitchShader: "basic",
-      glitchIntensity: 1.0,
-      enableRetro: true,
-      retroShader: "vhs",
-      retroIntensity: 1.0,
-      enableDistortion: true,
-      distortionShader: "wave",
-      distortionIntensity: 1.0,
-      enableColor: true,
-      colorShader: "hueshift",
-      colorIntensity: 1.0,
-      enableEdge: false,
-      edgeShader: "sobel",
-      edgeIntensity: 1.0,
-      enableBlur: false,
-      blurShader: "gaussian",
-      blurIntensity: 1.0,
-      enableBlend: false,
-      blendShader: "screen",
-      blendIntensity: 1.0,
-      enableGenerative: false,
-      generativeShader: "noise",
-      generativeIntensity: 1.0,
-      enableAtmospheric: false,
-      atmosphericShader: "fog",
-      atmosphericIntensity: 1.0,
-      enableUtility: false,
-      utilityShader: "invert",
-      utilityIntensity: 1.0,
-      intensity: 1.0,
-      speed: 1.0,
-      scale: 1.0,
-      hueShift: 0.0,
-      saturation: 1.0,
-      brightness: 1.0,
-      blendMode: "normal",
-    },
-  },
-  vfxPack: {
-    label: "VFX Pack",
-    config: {
-      chromaticEnabled: true,
-      chromaticIntensity: 0.3,
-      chromaticAngle: 0.0,
-      vhsEnabled: false,
-      scanLineIntensity: 0.3,
-      scanLineCount: 100,
-      vhsNoise: 0.1,
-      trackingDistortion: 0.2,
-      halftoneEnabled: false,
-      halftoneDotSize: 8,
-      halftoneSharpness: 0.7,
-    },
-  },
-  // Settings nodes - control pipeline parameters
-  noiseSettings: {
-    label: "Noise Settings",
-    config: { noiseScale: 0.7, noiseController: true },
-  },
-  vaceSettings: {
-    label: "VACE Settings",
-    config: { vaceEnabled: false, vaceContextScale: 1.0, useInputVideo: false },
-  },
-  resolutionSettings: {
-    label: "Resolution",
-    config: { width: 512, height: 512 },
-  },
-  advancedSettings: {
-    label: "Advanced Settings",
-    config: { denoisingSteps: 30, quantization: "", kvCacheAttentionBias: 0.0 },
-  },
-  loraSettings: {
-    label: "LoRA Adapters",
-    config: { loras: [] },
-  },
-  // Custom effect node - user defines parameters and code
   custom: {
-    label: "Custom Effect",
+    label: "Custom Processor",
     config: { 
-      name: "My Effect",
-      params: [], // [{ name, type, default, min, max, description }]
-      code: "# Define your effect processing here\n# frames: tensor of shape (T, H, W, C) in [0, 1] range\n# Return processed frames\nreturn frames",
+      name: "My Processor",
+      params: [],
+      code: "",
       isCodeMode: true,
     },
   },
@@ -257,22 +75,14 @@ export const nodeDefaults: Record<string, Partial<NodeData>> = {
     label: "Pipeline Output",
     config: { usage: "main" },
   },
-  preprocessorOutput: {
-    label: "Preprocessor Output",
-    config: {},
-  },
-  postprocessorOutput: {
-    label: "Postprocessor Output",
-    config: {},
-  },
   pluginConfig: {
     label: "Plugin Configuration",
     config: {
       pipelineId: "",
       pipelineName: "My Plugin",
       pipelineDescription: "Generated by OpenScope",
-      usage: "main", // main, preprocessor, postprocessor, all
-      mode: "video", // text, video
+      usage: "main",
+      mode: "video",
       supportsPrompts: true,
       remoteInference: false,
     },
@@ -288,17 +98,16 @@ export const nodeDefaults: Record<string, Partial<NodeData>> = {
     label: "Getting Started",
     config: {
       title: "1. Getting Started",
-      content: `Welcome to OpenScope! 🎯
+      content: `Welcome to OpenScope! 
 
 OpenScope is a visual plugin builder for Daydream Scope that lets you create AI video processing pipelines without coding.
 
 KEY CONCEPTS:
 • Plugin Config - Defines your plugin's identity (name, ID, usage type)
-• Inputs - Video, Text Prompts, or Image References
+• Inputs - Video, Text Prompts, or Image References  
 • Pipelines - AI models fetched from Scope server
 • Preprocessors - Modify input before main pipeline
 • Postprocessors - Modify output after main pipeline
-• Effects - Visual enhancements like blur, kaleido, etc.
 
 GETTING STARTED:
 1. Create a Plugin Config node first
@@ -314,27 +123,28 @@ Press the Generate button in the header to create your plugin.`,
     label: "First Processor",
     config: {
       title: "2. Creating Your First Processor",
-      content: `Let's create a simple postprocessor! 🚀
+      content: `Let's create a simple processor! 
 
 STEP 1: Set Usage
-• In Plugin Config, set Usage to "postprocessor"
+• In Plugin Config, set Usage to "preprocessor" or "postprocessor"
 
 STEP 2: Add Video Input
 • Expand Input category
 • Drag "Video Input" to canvas
 
-STEP 3: Add an Effect
-• Expand Effects category (now visible!)
-• Drag "Brightness" or "Blur" to canvas
+STEP 3: Add a Custom Processor
+• Expand Pre-processor or Post-processor category
+• Drag "Create New (Beta)" to canvas
+• Describe what you want in chat mode, or write code directly
 
 STEP 4: Connect Nodes
 • Click the right handle of Video Input
-• Drag to the left handle of your effect
+• Drag to the left handle of your processor
 
 STEP 5: Add Output
 • Expand Output category
-• Drag "Postprocessor Output" to canvas
-• Connect your effect to it
+• Drag "Pipeline Output" to canvas
+• Connect your processor to it
 
 STEP 6: Generate!
 • Click Generate to create your plugin
@@ -346,7 +156,7 @@ Congratulations! You've created your first processor!`,
     label: "Node Types",
     config: {
       title: "3. Understanding Node Types",
-      content: `Each node serves a purpose in your pipeline! 📦
+      content: `Each node serves a purpose in your pipeline!
 
 INPUT NODES:
 • Video Input - Accepts video frames from camera/file
@@ -360,59 +170,34 @@ PIPELINE NODE:
 • Toggle code to see the Python implementation
 
 PREPROCESSOR NODES:
-• Segmentation - Object detection/masking
-• Depth Estimation - Create depth maps
-• Background Removal - Transparent backgrounds
-• "New" - Create custom preprocessor
-
-EFFECT NODES:
-• Blur, Mirror, Kaleido, Vignette, etc.
-• "New" - Create custom effect
-• These modify frames visually
+• Process input before the main pipeline
+• Use Scope server pipelines or create custom with AI
 
 POSTPROCESSOR NODES:
-• Color Grading - Professional color correction
-• Upscaling - AI resolution increase
-• Denoising - Remove noise
-• Style Transfer - Apply artistic styles
+• Process output after the main pipeline  
+• Use Scope server pipelines or create custom with AI
 
 OUTPUT NODES:
-• Pipeline Output - Main AI result
-• Preprocessor Output - Preprocessed data
-• Postprocessor Output - Final processed result`,
+• Pipeline Output - Main AI result`,
     },
   },
   lessonPreprocessors: {
     label: "Preprocessors",
     config: {
       title: "4. Working with Preprocessors",
-      content: `Preprocessors modify input before the main AI pipeline! 🔧
+      content: `Preprocessors modify input before the main AI pipeline!
 
 WHEN TO USE:
 • You need to prepare input for AI models
-• Object masking before generation
-• Depth guidance for structure
-• Background removal for compositing
+• Add custom processing logic
+• Transform video in specific ways
 
-AVAILABLE PREPROCESSORS:
-
-SEGMENTATION:
-• Detects and masks objects in frames
-• Use "person" class for portrait work
-• Outputs masks for guidance
-
-DEPTH ESTIMATION:
-• Creates depth maps from 2D frames
-• Great for VACE structural guidance
-• Helps maintain 3D consistency
-
-BACKGROUND REMOVAL:
-• Removes background with alpha channel
-• Outputs RGBA with transparency
-• Perfect for compositing
+AVAILABLE OPTIONS:
+• Use pipelines from your Scope server
+• Create custom with AI - describe what you want in chat mode
 
 CREATING CUSTOM:
-• Use "New" in Preprocessor category
+• Use "Create New (Beta)" in Pre-processor category
 • Write Python code in code mode
 • Process frames before main pipeline
 
@@ -426,50 +211,26 @@ TIPS:
     label: "Postprocessors",
     config: {
       title: "5. Working with Postprocessors",
-      content: `Postprocessors enhance or modify the AI output! ✨
+      content: `Postprocessors enhance or modify the AI output!
 
 WHEN TO USE:
 • After AI generation completes
-• Color correction and grading
-• Resolution enhancement
-• Adding visual effects
+• Add visual effects or transformations
+• Process the final output
 
-AVAILABLE POSTPROCESSORS:
-
-COLOR GRADING:
-• Temperature, Tint, Saturation, Contrast
-• Professional color correction
-• Match footage styles
-
-UPSCALING:
-• AI-powered resolution increase
-• 2x or 4x scale options
-• Models: realesrgan, esrgan, swinir
-
-DENOISING:
-• Remove compression artifacts
-• Clean up noisy outputs
-• Strength adjustable
-
-STYLE TRANSFER:
-• Apply artistic styles
-• Anime, oil, sketch, watercolor
-• Adjustable strength
-
-EFFECTS (also postprocessors):
-• Brightness, Contrast, Blur
-• Mirror, Kaleido, Vignette
-• Many more visual effects
+AVAILABLE OPTIONS:
+• Use pipelines from your Scope server
+• Create custom with AI - describe what you want in chat mode
 
 CREATING CUSTOM:
-• Use "New" in Effects category
+• Use "Create New (Beta)" in Post-processor category
 • Write Python code in code mode
 • Process output frames
 
 TIPS:
 • Postprocessors run AFTER the main pipeline
 • Can chain multiple postprocessors
-• Effects category = visual postprocessors`,
+• The order matters for best results`,
     },
   },
 };
@@ -483,12 +244,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     let defaults = nodeDefaults[type] || { label: type, config: {} };
     let labelOverride: string | undefined;
     
-    // Handle pipeline_ type (e.g., pipeline_animateDiff)
     if (type.startsWith("pipeline_")) {
       const pipelineId = type.replace("pipeline_", "");
       const usage = config?.usage as string | undefined;
       
-      // Handle custom pre/post processor - create placeholder that can be renamed
       if (pipelineId === "customPreprocessor") {
         defaults = {
           label: "Preprocessor",
@@ -500,21 +259,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           config: { pipelineId: "my-postprocessor", isCustomPipeline: true, usage: "postprocessor" },
         };
       } else {
-        // Built-in pipelines - determine label based on usage config or pipeline ID
         let label = "Main Pipeline";
         if (usage === "preprocessor") {
           label = "Preprocessor";
         } else if (usage === "postprocessor") {
           label = "Postprocessor";
-        } else {
-          // Fallback to checking known pipeline IDs for backward compatibility
-          const postprocessorPipelines = ["bloom", "cosmic-vfx", "vfx-pack", "rife", "kaleido-scope-post"];
-          const preprocessorPipelines = ["scribble", "gray", "optical-flow", "kaleido-scope-pre"];
-          if (postprocessorPipelines.includes(pipelineId)) {
-            label = "Postprocessor";
-          } else if (preprocessorPipelines.includes(pipelineId)) {
-            label = "Preprocessor";
-          }
         }
         defaults = {
           label,
@@ -523,7 +272,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       }
     }
 
-  
     if ((type === "parameters" || type === "custom") && config?.createNewKind) {
       labelOverride = config.createNewKind === "preprocessor" ? "Preprocessor" : "Postprocessor";
     }
@@ -532,7 +280,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       id: uuidv4(),
       type: "scopeNode",
       position,
-      selected: options?.selectNode !== false, // Default to true unless explicitly set to false
+      selected: options?.selectNode !== false,
       data: {
         label: labelOverride || defaults.label || type,
         type,
@@ -541,7 +289,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     };
     
     if (options?.selectNode === false) {
-      // Don't change selection
       set({ nodes: [...get().nodes, newNode] });
     } else {
       set({ nodes: [...get().nodes, newNode], selectedNode: newNode.id });
@@ -567,23 +314,10 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         };
       }
 
-      // Handle pipeline_ type to extract pipelineId
       let config = { ...defaults.config, ...n.config };
       if (n.type.startsWith("pipeline_")) {
         const pipelineId = n.type.replace("pipeline_", "");
         config = { ...config, pipelineId };
-      }
-      
-      // Also handle known template node types that map to different pipeline IDs
-      const templateToPipelineId: Record<string, string> = {
-        "yoloMask": "yolo_mask",
-        "kaleidoscope": "kaleido-scope",
-        "bloom": "bloom",
-        "cosmicVFX": "cosmic-vfx",
-        "vfxPack": "vfx-pack",
-      };
-      if (templateToPipelineId[n.type]) {
-        config = { ...config, pipelineId: templateToPipelineId[n.type] };
       }
 
       return {
@@ -604,11 +338,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     const isInputNode = (type: string) => 
       ["videoInput", "textPrompt", "imageInput", "parameters"].includes(type);
     const isOutputNode = (type: string) => 
-      ["pipelineOutput", "preprocessorOutput", "postprocessorOutput"].includes(type);
-    const isMainPipeline = (type: string) => 
+      type === "pipelineOutput";
+    const isPipelineNode = (type: string) => 
       type.startsWith("pipeline_") || type === "pipeline";
-    const isPreprocessor = (type: string) => type.startsWith("pipeline_");
-    const isPostprocessor = (type: string) => type.startsWith("pipeline_");
     
     if (edges && edges.length > 0) {
       newEdges = edges.map((e) => ({
@@ -621,31 +353,17 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     } else if (newNodes.length > 1) {
       const pluginConfig = newNodes.find(n => n.data.type === "pluginConfig");
       const inputNodes = newNodes.filter(n => isInputNode(n.data.type));
-      const preprocessorNodes = newNodes.filter(n => isPreprocessor(n.data.type));
-      const postprocessorNodes = newNodes.filter(n => isPostprocessor(n.data.type));
-      const mainPipelines = newNodes.filter(n => isMainPipeline(n.data.type));
-      const preprocessorOutputs = newNodes.filter(n => n.data.type === "preprocessorOutput");
-      const pipelineOutputs = newNodes.filter(n => n.data.type === "pipelineOutput");
-      const postprocessorOutputs = newNodes.filter(n => n.data.type === "postprocessorOutput");
-      const otherNodes = newNodes.filter(n => 
-        !isInputNode(n.data.type) && 
-        !isPreprocessor(n.data.type) && 
-        !isPostprocessor(n.data.type) && 
-        !isMainPipeline(n.data.type) &&
-        !isOutputNode(n.data.type) &&
-        n.data.type !== "pluginConfig"
-      );
+      const pipelineNodes = newNodes.filter(n => isPipelineNode(n.data.type));
+      const outputNodes = newNodes.filter(n => isOutputNode(n.data.type));
 
       let colIndex = 0;
       
       if (pluginConfig) {
-        const pcIdx = newNodes.indexOf(pluginConfig);
         pluginConfig.position = { x: 50, y: 50 + colIndex * (NODE_HEIGHT + VERTICAL_GAP) };
         colIndex++;
       }
 
       inputNodes.forEach(node => {
-        const idx = newNodes.indexOf(node);
         node.position = { x: 50 + (NODE_WIDTH + HORIZONTAL_GAP), y: 50 + colIndex * (NODE_HEIGHT + VERTICAL_GAP) };
         if (pluginConfig) {
           newEdges.push({
@@ -659,12 +377,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         colIndex++;
       });
 
-      if (inputNodes.length === 0 && pluginConfig) {
-        colIndex++;
-      }
-
-      preprocessorNodes.forEach(node => {
-        const idx = newNodes.indexOf(node);
+      pipelineNodes.forEach(node => {
         node.position = { x: 50 + 2 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 + colIndex * (NODE_HEIGHT + VERTICAL_GAP) };
         const firstInput = inputNodes[0] || pluginConfig;
         if (firstInput) {
@@ -676,95 +389,20 @@ export const useGraphStore = create<GraphState>((set, get) => ({
             animated: true,
           });
         }
-      });
-
-      preprocessorOutputs.forEach(node => {
-        const idx = newNodes.indexOf(node);
-        node.position = { x: 50 + 3 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 };
-        preprocessorNodes.forEach(pre => {
-          newEdges.push({
-            id: uuidv4(),
-            source: pre.id,
-            target: node.id,
-            type: "smoothstep",
-            animated: true,
-          });
-        });
-      });
-
-      mainPipelines.forEach(node => {
-        const idx = newNodes.indexOf(node);
-        node.position = { x: 50 + 3 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 + (colIndex > 0 ? 1 : 0) * (NODE_HEIGHT + VERTICAL_GAP) };
-        
-        const firstPreprocessor = preprocessorNodes[0];
-        const firstInput = inputNodes[0] || pluginConfig;
-        
-        if (firstPreprocessor) {
-          newEdges.push({
-            id: uuidv4(),
-            source: firstPreprocessor.id,
-            target: node.id,
-            type: "smoothstep",
-            animated: true,
-          });
-        } else if (firstInput) {
-          newEdges.push({
-            id: uuidv4(),
-            source: firstInput.id,
-            target: node.id,
-            type: "smoothstep",
-            animated: true,
-          });
-        }
-      });
-
-      pipelineOutputs.forEach(node => {
-        const idx = newNodes.indexOf(node);
-        node.position = { x: 50 + 4 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 };
-        mainPipelines.forEach(pipeline => {
-          newEdges.push({
-            id: uuidv4(),
-            source: pipeline.id,
-            target: node.id,
-            type: "smoothstep",
-            animated: true,
-          });
-        });
-      });
-
-      postprocessorNodes.forEach(node => {
-        const idx = newNodes.indexOf(node);
-        node.position = { x: 50 + 4 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 + (pipelineOutputs.length > 0 ? 1 : 0) * (NODE_HEIGHT + VERTICAL_GAP) };
-        
-        mainPipelines.forEach(pipeline => {
-          newEdges.push({
-            id: uuidv4(),
-            source: pipeline.id,
-            target: node.id,
-            type: "smoothstep",
-            animated: true,
-          });
-        });
-      });
-
-      postprocessorOutputs.forEach(node => {
-        const idx = newNodes.indexOf(node);
-        node.position = { x: 50 + 5 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 };
-        postprocessorNodes.forEach(post => {
-          newEdges.push({
-            id: uuidv4(),
-            source: post.id,
-            target: node.id,
-            type: "smoothstep",
-            animated: true,
-          });
-        });
-      });
-
-      otherNodes.forEach(node => {
-        const idx = newNodes.indexOf(node);
-        node.position = { x: 50 + 3 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 + colIndex * (NODE_HEIGHT + VERTICAL_GAP) };
         colIndex++;
+      });
+
+      outputNodes.forEach(node => {
+        node.position = { x: 50 + 3 * (NODE_WIDTH + HORIZONTAL_GAP), y: 50 };
+        pipelineNodes.forEach(pipeline => {
+          newEdges.push({
+            id: uuidv4(),
+            source: pipeline.id,
+            target: node.id,
+            type: "smoothstep",
+            animated: true,
+          });
+        });
       });
     }
 
@@ -828,16 +466,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     const { nodes, edges } = get();
     if (nodes.length === 0) return;
 
-    // Find the plugin config to determine usage
     const pluginConfig = nodes.find(n => n.data.type === "pluginConfig");
     const usage = (pluginConfig?.data?.config?.usage as string) || "main";
 
-    // Determine output type based on usage
     let outputType = "pipelineOutput";
-    if (usage === "preprocessor") outputType = "preprocessorOutput";
-    else if (usage === "postprocessor") outputType = "postprocessorOutput";
 
-    // Find the rightmost node to connect to
     let rightmostNode = nodes[0];
     let maxX = nodes[0].position.x;
     for (const node of nodes) {
@@ -847,7 +480,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       }
     }
 
-    // Add output node
     const outputDefaults = nodeDefaults[outputType] || { label: outputType, config: {} };
     const outputNode: Node<NodeData> = {
       id: uuidv4(),
@@ -861,7 +493,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       },
     };
 
-    // Create edge from rightmost node to output
     const newEdge: Edge = {
       id: uuidv4(),
       source: rightmostNode.id,

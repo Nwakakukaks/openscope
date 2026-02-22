@@ -5,31 +5,15 @@ import {
   Video,
   Type,
   Image,
-  Settings,
-  SunMedium,
-  Contrast,
-  CircleDashed,
-  Maximize2,
   Hexagon,
-  Layers,
-  EyeOff,
   Play,
-  Square,
   ChevronDown,
   GripVertical,
   StickyNote,
   Plug,
-  Scan,
-  Eye,
-  Palette,
-  Maximize,
-  Sparkles,
-  Waves,
-  Grid3X3,
   Loader2,
   Zap,
   AlertCircle,
-  Tv,
   BrainCog,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
@@ -306,16 +290,16 @@ export default function NodePalette() {
       nodes: [
         { type: "lessonGettingStarted", label: "1. Getting Started", icon: <StickyNote className="w-4 h-4" />, description: "What is OpenScope?" },
         { type: "lessonFirstProcessor", label: "2. First Processor", icon: <StickyNote className="w-4 h-4" />, description: "Create a custom processor with AI" },
-        { type: "lessonNodeTypes", label: "3. Node Types", icon: <StickyNote className="w-4 h-4" />, description: "API pipelines + custom AI processors" },
-        { type: "lessonPreprocessors", label: "4. Preprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Use API pipelines or AI to create" },
-        { type: "lessonPostprocessors", label: "5. Postprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Use API pipelines or AI to create" },
+        { type: "lessonNodeTypes", label: "3. Node Types", icon: <StickyNote className="w-4 h-4" />, description: "Understand all nodes available" },
+        { type: "lessonPreprocessors", label: "4. Preprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Use available pipelines or create new" },
+        { type: "lessonPostprocessors", label: "5. Postprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Use available pipelines or create new" },
         { type: "noteGuide", label: "Custom Note", icon: <StickyNote className="w-4 h-4" />, description: "Add your own note" },
       ],
     },
   ];
 
   return (
-    <aside className="w-64 shrink-0 bg-card border-r border-border flex flex-col min-h-0">
+    <aside data-tour="node-palette" className="w-64 shrink-0 bg-card border-r border-border flex flex-col min-h-0">
       <div className="p-4 border-b border-border">
         <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <GripVertical className="w-4 h-4 text-muted-foreground" />

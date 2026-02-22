@@ -54,8 +54,23 @@ export default function TemplateModal({ isOpen, onClose }: TemplateModalProps) {
   const [installing, setInstalling] = useState(false);
   const [uninstalling, setUninstalling] = useState<string | null>(null);
   
-  const addNodesWithEdges = useGraphStore((state) => state.addNodesWithEdges);
-  const clearAll = useGraphStore((state) => state.clearAll);
+const addNodesWithEdges = useGraphStore((state) => state.addNodesWithEdges);
+const clearAll = useGraphStore((state) => state.clearAll);
+
+const transformGitUrl = (value: string): string => {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("git+")) {
+    return trimmed;
+  }
+  const gitHosts = ["github.com", "gitlab.com", "bitbucket.org"];
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    const isGitHost = gitHosts.some(host => trimmed.includes(host));
+    if (isGitHost) {
+      return `git+${trimmed}`;
+    }
+  }
+  return trimmed;
+};
 
   useEffect(() => {
     if (isOpen) {
@@ -107,12 +122,26 @@ export default function TemplateModal({ isOpen, onClose }: TemplateModalProps) {
       const response = await fetch("/api/scope/plugins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ package: installUrl.trim() }),
+        body: JSON.stringify({ package: transformGitUrl(installUrl.trim()) }),
       });
       
       if (response.ok) {
-        showSuccess("Plugin installed", "The plugin has been installed successfully");
+        showSuccess("Plugin installed", "Restarting server to load new plugin...");
         setInstallUrl("");
+        
+        await fetch("/api/scope/restart", { method: "POST" });
+        
+        let attempts = 0;
+        while (attempts < 30) {
+          try {
+            const health = await fetch("/health");
+            if (health.ok) break;
+          } catch {}
+          await new Promise(r => setTimeout(r, 1000));
+          attempts++;
+        }
+        
+        showSuccess("Server restarted", "New plugin is now available");
         fetchPlugins();
       } else {
         const error = await response.json();

@@ -130,7 +130,7 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
   );
 
   return (
-    <div ref={wrapperRef} className="flex-1 min-h-0 relative" style={{ width: '100%', height: '100%' }}>
+    <div ref={wrapperRef} data-tour="canvas" className="flex-1 min-h-0 relative" style={{ width: '100%', height: '100%' }}>
       {dimensions.width > 0 && dimensions.height > 0 && (
         <ReactFlow
           nodes={nodesWithStreams}

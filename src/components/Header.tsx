@@ -140,7 +140,7 @@ export default function Header({
         </div>
         <div className="h-8 w-px bg-border mx-2" />
         <nav className="flex items-center gap-1">
-          <ActionButton icon={FolderPlus} label="Templates" onClick={onOpenTemplates} />
+          <ActionButton icon={FolderPlus} label="Templates" onClick={onOpenTemplates} data-tour="header-templates" />
           {/* <ActionButton icon={FolderOpen} label="Open" onClick={onOpenOpen} /> */}
           <ActionButton icon={Save} label="Save" onClick={() => showInfo("Coming soon", "Save functionality will be available in a future update")} />
         </nav>
@@ -170,6 +170,7 @@ export default function Header({
         ) : (
           <button
             onClick={onStartStream}
+            data-tour="header-run"
             className="flex items-center gap-2 px-4 py-2 rounded-lg  bg-accent text-accent-foreground hover:bg-muted transition-colors text-sm font-medium"
           >
             <Play className="w-4 h-4" />

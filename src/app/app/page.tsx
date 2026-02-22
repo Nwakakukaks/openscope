@@ -10,6 +10,7 @@ import AIAssistant from "@/components/AIAssistant";
 import SaveModal from "@/components/SaveModal";
 import OpenModal from "@/components/OpenModal";
 import AuthModal from "@/components/AuthModal";
+import TourModal, { hasSeenTour } from "@/components/TourModal";
 import { useGraphStore } from "@/store/graphStore";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useScopeServer } from "@/hooks/useScopeServer";
@@ -22,7 +23,15 @@ export default function Home() {
   const [showSave, setShowSave] = useState(false);
   const [showOpen, setShowOpen] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    const hasTour = hasSeenTour();
+    if (!hasTour) {
+      setShowTour(true);
+    }
+  }, []);
 
   const selectedNode = useGraphStore((state) => state.selectedNode);
   const nodes = useGraphStore((state) => state.nodes);
@@ -384,6 +393,12 @@ export default function Home() {
         isOpen={showAuth}
         onClose={() => setShowAuth(false)}
         onAuthSuccess={() => { }}
+      />
+
+      <TourModal
+        isOpen={showTour}
+        onClose={() => setShowTour(false)}
+        onComplete={() => setShowTour(false)}
       />
     </div>
   );

@@ -198,3 +198,15 @@ async def install_processor_plugin(processor_type: str):
             }
         except httpx.ConnectError:
             raise HTTPException(status_code=503, detail="Scope server not available")
+
+
+@router.post("/restart")
+async def restart_server():
+    """Restart the Scope server to pick up new plugins."""
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            await client.post(f"{settings.scope_api_url}/api/v1/restart")
+        except httpx.ConnectError:
+            raise HTTPException(status_code=503, detail="Scope server not available")
+        except Exception:
+            pass

@@ -14,23 +14,6 @@ import { parsePythonConfig, parsedParamsToConfigFields } from "@/lib/pythonConfi
 
 const SCOPE_API_URL = "/api/scope";
 
-interface SchemaProperty {
-  type?: string;
-  default?: unknown;
-  description?: string;
-  minimum?: number;
-  maximum?: number;
-  enum?: unknown[];
-  ui?: {
-    category?: string;
-    order?: number;
-    component?: string;
-    modes?: ("text" | "video")[];
-    is_load_param?: boolean;
-    label?: string;
-  };
-}
-
 interface PipelineInfo {
   id: string;
   name: string;
@@ -42,62 +25,51 @@ interface PipelineInfo {
   usage?: string[];
 }
 
-const DEFAULT_PIPELINES = ["passthrough", "gray", "scribble", "rife", "optical-flow"];
-
 const NODE_GUIDES: Record<string, { title: string; description: string; usage: string; example?: string }> = {
   pipeline: {
     title: "Pipeline",
     description: "AI pipeline fetched from Scope server.",
-    usage: "Select a pipeline from the Main Pipeline category.",
-    example: 'pipelineId: "animate-diff"'
+    usage: "Select a pipeline from the Scope server.",
   },
   pluginConfig: {
     title: "Plugin Configuration",
-    description: "Defines how your plugin appears in Scope. Set the pipeline type, input mode, and metadata.",
-    usage: "Set the pipeline ID (unique name), display name, description, usage type (main/preprocessor/postprocessor), and input mode (text/video/image).",
-    example: 'pipelineId: "my-vfx"\npipelineName: "My VFX"\nusage: "postprocessor"'
+    description: "Defines how your plugin appears in Scope.",
+    usage: "Set pipeline ID, name, usage type, and input mode.",
   },
   noteGuide: {
     title: "Note / Guide",
-    description: "Add notes and instructions to your plugin flow. Useful for documentation or step-by-step guides.",
-    usage: "Write any notes or instructions. These are for your reference and don't affect the plugin.",
-    example: "title: 'Step 1'\ncontent: 'Add video input here'"
+    description: "Add notes and instructions.",
+    usage: "Write any notes.",
   },
   videoInput: {
     title: "Video Input",
-    description: "Accept video frames from camera or video file as input to your pipeline.",
-    usage: "Connect to the start of your effect chain. The Frames parameter controls how many frames to buffer.",
-    example: "frames: 1 (real-time)"
+    description: "Accept video frames from camera or video file.",
+    usage: "Connect to the start of your pipeline.",
   },
   textPrompt: {
     title: "Text Prompt",
-    description: "Text input with optional weight for AI generation. Used in text-to-video pipelines.",
-    usage: "Connect to pipelines that support prompts. Weight determines prompt influence (0-2).",
-    example: "text: 'cyberpunk city'\nweight: 1.0"
+    description: "Text input with optional weight for AI generation.",
+    usage: "Connect to pipelines that support prompts.",
   },
   imageInput: {
     title: "Image Input",
-    description: "Reference image input for image-to-video or compositing pipelines.",
-    usage: "Connect to blend nodes or image-to-video pipelines.",
-    example: "path: '/path/to/image.jpg'"
+    description: "Reference image input for image-to-video.",
+    usage: "Connect to image-to-video pipelines.",
   },
   parameters: {
     title: "Parameters",
-    description: "Key-value parameter storage for runtime configuration.",
-    usage: "Add custom parameters that will be passed to your pipeline.",
-    example: "key: 'model'\nvalue: 'realesrgan'"
+    description: "Key-value parameter storage for runtime config.",
+    usage: "Add custom parameters.",
   },
   pipelineOutput: {
-    title: "Pipeline Output (Main)",
-    description: "Mark this as the main generative pipeline output. Used when this is the primary AI model.",
+    title: "Pipeline Output",
+    description: "Mark this as the main pipeline output.",
     usage: "Set usage to 'main' for generative pipelines.",
-    example: "usage: 'main'"
   },
   custom: {
     title: "Custom Processor",
     description: "AI-generated processor with custom code.",
-    usage: "Describe what you want the processor to do and AI will generate the code.",
-    example: "Add a blur effect"
+    usage: "Describe what you want the processor to do.",
   },
 };
 
@@ -106,32 +78,11 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
     { label: "pipelineId", type: "select-dynamic", description: "Select pipeline from Scope server" },
   ],
   noteGuide: [
-    { label: "Title", type: "text", description: "Note title (e.g. Step 1)" },
+    { label: "Title", type: "text", description: "Note title" },
     { label: "Content", type: "textarea", description: "Instructions or notes" },
-  ],
-  lessonGettingStarted: [
-    { label: "Title", type: "text", description: "Lesson title" },
-    { label: "Content", type: "textarea", description: "Lesson content" },
-  ],
-  lessonFirstProcessor: [
-    { label: "Title", type: "text", description: "Lesson title" },
-    { label: "Content", type: "textarea", description: "Lesson content" },
-  ],
-  lessonNodeTypes: [
-    { label: "Title", type: "text", description: "Lesson title" },
-    { label: "Content", type: "textarea", description: "Lesson content" },
-  ],
-  lessonPreprocessors: [
-    { label: "Title", type: "text", description: "Lesson title" },
-    { label: "Content", type: "textarea", description: "Lesson content" },
-  ],
-  lessonPostprocessors: [
-    { label: "Title", type: "text", description: "Lesson title" },
-    { label: "Content", type: "textarea", description: "Lesson content" },
   ],
   videoInput: [
     { label: "Frames", type: "number", min: 1, max: 100, description: "Number of frames to buffer" },
-    { label: "VideoFile", type: "file", accept: "video/*", description: "Upload video file" },
   ],
   textPrompt: [
     { label: "Text", type: "textarea", description: "Prompt text" },
@@ -143,34 +94,9 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
     { label: "Key", type: "text", description: "Parameter name" },
     { label: "Value", type: "text", description: "Parameter value" },
   ],
-  // Custom processor - config extracted from pythonCode
   custom: [],
-  // Settings nodes
-  noiseSettings: [
-    { label: "noiseScale", type: "slider", min: 0, max: 2, description: "Noise scale for generation (0-2)" },
-    { label: "noiseController", type: "toggle", description: "Enable noise controller" },
-  ],
-  vaceSettings: [
-    { label: "vaceEnabled", type: "toggle", description: "Enable VACE context guidance" },
-    { label: "vaceContextScale", type: "slider", min: 0, max: 2, description: "VACE context scale (0-2)" },
-    { label: "useInputVideo", type: "toggle", description: "Use input video as VACE reference" },
-  ],
-  resolutionSettings: [
-    { label: "width", type: "number", min: 256, max: 2048, description: "Output width" },
-    { label: "height", type: "number", min: 256, max: 2048, description: "Output height" },
-  ],
-  advancedSettings: [
-    { label: "denoisingSteps", type: "number", min: 1, max: 100, description: "Number of denoising steps" },
-    { label: "quantization", type: "select", options: ["", "fp8_e4m3fn", "fp8_e5m2"], description: "Quantization method" },
-    { label: "kvCacheAttentionBias", type: "slider", min: -1, max: 1, description: "KV cache attention bias" },
-  ],
-  loraSettings: [
-    { label: "loras", type: "textarea", description: "LoRA adapters (JSON array)" },
-  ],
-  preprocessor: [],
-  postprocessor: [],
   pluginConfig: [
-    { label: "pipelineId", type: "select", options: ["passthrough", "gray", "scribble", "rife", "optical-flow"], description: "(Main generation pipeline)" },
+    { label: "pipelineId", type: "select-dynamic", description: "(Main generation pipeline)" },
     { label: "pluginName", type: "text", description: "Plugin display name" },
     { label: "pluginDescription", type: "textarea", description: "Plugin description" },
     { label: "usage", type: "select", options: ["main", "preprocessor", "postprocessor", "all"], description: "Pipeline type" },
@@ -179,28 +105,14 @@ const nodeConfigs: Record<string, { label: string; type: string; min?: number; m
   ],
 };
 
-type WizardStep = {
-  id: string;
-  title: string;
-  fields: string[];
-  choices?: { id: string; label: string; description: string; icon: React.ReactNode; target: string }[];
-  nextStep?: string;
-};
-
-const WIZARD_CONFIGS: Record<string, WizardStep[]> = {
-  // Wizard configs removed - now using only API pipelines and custom AI processors
-};
-
 export default function PropertiesPanel() {
   const nodes = useGraphStore((state) => state.nodes);
   const selectedNode = useGraphStore((state) => state.selectedNode);
   const updateNodeConfig = useGraphStore((state) => state.updateNodeConfig);
-  const updateNodeType = useGraphStore((state) => state.updateNodeType);
-  const [pipelines, setPipelines] = useState<string[]>(DEFAULT_PIPELINES);
+  const [pipelines, setPipelines] = useState<string[]>([]);
   const [pipelineSchemas, setPipelineSchemas] = useState<Record<string, PipelineInfo>>({});
   const [pipelinesLoading, setPipelinesLoading] = useState(false);
 
-  // Fetch available pipelines with config_schema from Scope server
   useEffect(() => {
     const fetchPipelines = async () => {
       setPipelinesLoading(true);
@@ -224,13 +136,12 @@ export default function PropertiesPanel() {
     };
     fetchPipelines();
   }, []);
+
   const selectNode = useGraphStore((state) => state.selectNode);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
 
-  // Handle pipelineId change in pluginConfig - sync to pipeline node
   const handlePluginConfigChange = (key: string, value: unknown) => {
     if (key === "pipelineId" && typeof value === "string") {
-      // Find pipeline node and update its config
       const pipelineNode = nodes.find((n) => n.data.type === "pipeline");
       if (pipelineNode) {
         updateNodeConfig(pipelineNode.id, { pipelineId: value });
@@ -277,7 +188,6 @@ export default function PropertiesPanel() {
   
   const configKey = isPipelineNode ? "pipeline" : nodeType;
 
-  // Get pipelineId for dynamic schema lookup
   let pipelineId = "";
   if (isPipelineNode) {
     pipelineId = (node.data.config?.pipelineId as string) || "";
@@ -286,7 +196,6 @@ export default function PropertiesPanel() {
     }
   }
 
-  // Build dynamic config fields from schema if available
   let dynamicConfigFields: Array<{
     label: string;
     type: string;
@@ -304,7 +213,6 @@ export default function PropertiesPanel() {
   if (configSchema?.properties) {
     const properties = configSchema.properties;
     Object.entries(properties).forEach(([key, prop]) => {
-      // Skip properties without ui metadata (internal/advanced)
       if (!prop.ui) return;
 
       const field: typeof dynamicConfigFields[0] = {
@@ -314,7 +222,6 @@ export default function PropertiesPanel() {
         isRuntimeParam: prop.ui.is_load_param === false,
       };
 
-      // Infer field type from schema
       if (prop.enum && Array.isArray(prop.enum)) {
         field.type = "select";
         field.options = prop.enum.map(String);
@@ -335,7 +242,6 @@ export default function PropertiesPanel() {
       dynamicConfigFields.push(field);
     });
 
-    // Sort by ui.order if available
     dynamicConfigFields.sort((a, b) => {
       const propA = properties[a.label];
       const propB = properties[b.label];
@@ -345,7 +251,6 @@ export default function PropertiesPanel() {
     });
   }
 
-  // Extract dynamic config fields from pythonCode for custom processors
   let customProcessorFields: Array<{
     label: string;
     type: string;
@@ -362,7 +267,6 @@ export default function PropertiesPanel() {
         customProcessorFields = parsedParamsToConfigFields(parsed.params);
       }
     } catch (e) {
-      // Failed to parse, fall back to default
     }
   }
 
@@ -384,13 +288,9 @@ export default function PropertiesPanel() {
   } else if (nodeConfigs[configKey]) {
     configFields = nodeConfigs[configKey];
   }
-  
-  const createNewKind = node.data.config?.createNewKind as string | undefined;
-
-  const wizardKey = null;
 
   return (
-    <div className="absolute right-0 top-0 h-full z-50" onClick={(e) => e.stopPropagation()}>
+    <div data-tour="properties-panel" className="absolute right-0 top-0 h-full z-50" onClick={(e) => e.stopPropagation()}>
       <aside className="w-80 bg-card border-l border-border flex flex-col shrink-0 h-full" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 border-b border-border" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
@@ -412,8 +312,6 @@ export default function PropertiesPanel() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
-
-
           <div className="mb-6 p-3 rounded-lg bg-background border border-border">
             <div className="flex items-center gap-3 ">
               <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
@@ -437,7 +335,6 @@ export default function PropertiesPanel() {
             ) : (
               <div className="space-y-4">
                 {configFields.map((field) => {
-                  // Use exact key match first (case-sensitive), then try lowercase
                   const value = node.data.config[field.label] ??
                     node.data.config[field.label.toLowerCase()] ??
                     (field.type === "slider" || field.type === "number" ? 0 :
@@ -447,9 +344,6 @@ export default function PropertiesPanel() {
                     <div key={field.label} className="space-y-2">
                       <div className="flex items-center justify-between gap-4">
                         <label className="text-sm font-medium text-foreground line-clamp-1">{field.label}</label>
-                        {/* {field.description && (
-                          <span className="text-xs text-muted-foreground text-ellipsis line-clamp-1">{field.description}</span>
-                        )} */}
                       </div>
                       {field.type === "text" && (
                         <input
