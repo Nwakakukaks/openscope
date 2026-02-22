@@ -34,10 +34,13 @@ import {
   Webcam,
   MessageSquare,
   Send,
+  BrainCog,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
+import { usePipelineSchemas } from "@/context/PipelineSchemasContext";
 import CodeEditor from "./CodeEditor";
 import { generateNodeCode } from "@/lib/codeGenerator";
+import { parsePythonConfig } from "@/lib/pythonConfigParser";
 import { showSuccess, showError } from "@/lib/toast";
 
 const DEFAULT_CODE_TEMPLATES: Record<string, string> = {
@@ -778,7 +781,7 @@ const NODE_GUIDES: Record<string, string> = {
 
 
 const NODE_STYLE =
-  "group min-w-[240px] rounded-lg bg-card border border-border transition-all cursor-grab active:cursor-grabbing relative";
+  "group min-w-[240px] max-w-[320px] rounded-lg bg-card border border-border transition-all cursor-grab active:cursor-grabbing relative";
 const NODE_HEADER =
   "flex items-center gap-2 px-3 py-2 border-b border-border/60";
 const ICON_BOX = "w-6 h-6 rounded flex items-center justify-center bg-background text-muted-foreground";
@@ -796,6 +799,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const selectNode = useGraphStore((state) => state.selectNode);
   const deleteNode = useGraphStore((state) => state.deleteNode);
   const updateNodeConfig = useGraphStore((state) => state.updateNodeConfig);
+  const { runtimeParams } = usePipelineSchemas();
   const imageFileRef = useRef<HTMLInputElement>(null);
   const videoFileRef = useRef<HTMLInputElement>(null);
   const inputVideoRef = useRef<HTMLVideoElement>(null);
@@ -819,7 +823,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
 
   // Mode state: "chat" | "code" | "visual" - defined early for use in effects
   const [nodeMode, setNodeMode] = useState<"chat" | "code" | "visual">(
-    isCustomProcessor && !nodeData.config?.pythonCode ? "chat" : isCodeMode ? "code" : "visual"
+    isCustomProcessor ? "chat" : isCodeMode ? "code" : "visual"
   );
 
   // Auto-play input video stream
@@ -859,11 +863,16 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   // Send parameter updates when settings nodes change during streaming
   const settingsNodeTypes = ["noiseSettings", "vaceSettings", "resolutionSettings", "advancedSettings", "loraSettings"];
   const effectNodeTypes = ["kaleidoscope", "bloom", "cosmicVFX", "vfxPack", "chromatic", "vhs", "halftone", "vignette", "colorGrading"];
+  const processingNodeTypes = ["brightness", "contrast", "blur", "mirror", "kaleido", "segmentation", "depthEstimation", "backgroundRemoval", "upscaling", "denoising", "styleTransfer"];
   const isSettingsNode = settingsNodeTypes.includes(nodeData.type);
   const isEffectNode = effectNodeTypes.includes(nodeData.type);
+  const isProcessingNode = processingNodeTypes.includes(nodeData.type);
+  const isPipelineNode = nodeData.type === "pipeline" || nodeData.type.startsWith("pipeline_");
   
   useEffect(() => {
-    if ((isSettingsNode || isEffectNode) && nodeData.isStreaming && nodeData.sendParameterUpdate && nodeData.config) {
+    const shouldUpdate = (isSettingsNode || isEffectNode || isProcessingNode || isPipelineNode) && nodeData.isStreaming && nodeData.sendParameterUpdate && nodeData.config;
+    
+    if (shouldUpdate) {
       const config = nodeData.config;
       const params: Record<string, unknown> = {};
       
@@ -978,11 +987,72 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         params.color_contrast = config.contrast ?? 0;
       }
       
-      if (Object.keys(params).length > 0) {
+      // Processing nodes
+      if (nodeData.type === "brightness") params.brightness_value = config.value ?? 0;
+      if (nodeData.type === "contrast") params.contrast_value = config.value ?? 1.0;
+      if (nodeData.type === "blur") params.blur_radius = config.radius ?? 5;
+      if (nodeData.type === "mirror") params.mirror_mode = config.mode ?? "horizontal";
+      if (nodeData.type === "kaleido") {
+        params.kaleido_slices = config.slices ?? 6;
+        params.kaleido_rotation = config.rotation ?? 0;
+        params.kaleido_zoom = config.zoom ?? 1.0;
+      }
+      if (nodeData.type === "segmentation") {
+        params.segmentation_model = config.model ?? "sam";
+        params.segmentation_target_class = config.targetClass ?? "person";
+      }
+      if (nodeData.type === "depthEstimation") params.depth_model = config.model ?? "depth-anything";
+      if (nodeData.type === "backgroundRemoval") params.background_model = config.model ?? "u2net";
+      if (nodeData.type === "upscaling") {
+        params.upscale_scale = config.scale ?? 2;
+        params.upscale_model = config.model ?? "realesrgan";
+      }
+      if (nodeData.type === "denoising") {
+        params.denoise_strength = config.strength ?? 0.5;
+        params.denoise_method = config.method ?? "bm3d";
+      }
+      if (nodeData.type === "styleTransfer") {
+        params.style_transfer_style = config.style ?? "anime";
+        params.style_transfer_strength = config.strength ?? 0.7;
+      }
+      
+      // Custom processor nodes - extract params from pythonCode
+      if (isCustomProcessor && config.pythonCode) {
+        try {
+          const parsed = parsePythonConfig(config.pythonCode as string);
+          parsed.params.forEach((param) => {
+            if (config[param.name] !== undefined && config[param.name] !== null) {
+              params[param.name] = config[param.name];
+            }
+          });
+        } catch (e) {
+          // Failed to parse, skip custom params
+        }
+      }
+      
+      // Pipeline nodes - forward only runtime params (is_load_param === false)
+      if (isPipelineNode && config) {
+        const pipelineId = config.pipelineId as string || nodeData.type.replace("pipeline_", "");
+        const allowedParams = runtimeParams[pipelineId];
+        
+        if (allowedParams && allowedParams.length > 0) {
+          allowedParams.forEach((key) => {
+            if (config[key] !== undefined && config[key] !== null) {
+              params[key] = config[key];
+            }
+          });
+        } else {
+          Object.entries(config).forEach(([key, value]) => {
+            if (value !== undefined && value !== null) params[key] = value;
+          });
+        }
+      }
+      
+      if (Object.keys(params).length > 0 && nodeData.sendParameterUpdate) {
         nodeData.sendParameterUpdate(params);
       }
     }
-  }, [nodeData.config, nodeData.isStreaming, nodeData.sendParameterUpdate, nodeData.type, isSettingsNode, isEffectNode]);
+  }, [nodeData.config, nodeData.isStreaming, nodeData.sendParameterUpdate, nodeData.type, isSettingsNode, isEffectNode, isProcessingNode, isPipelineNode, isCustomProcessor, runtimeParams]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, isVideo: boolean) => {
     const file = e.target.files?.[0];
@@ -1246,19 +1316,33 @@ function ScopeNode({ id, data, selected }: NodeProps) {
             <div className="text-xs text-muted-foreground truncate">{configPreview}</div>
           )} */}
         </div>
-        <div className="flex items-center gap-1 ml-3">
+        <div className="flex items-center gap-0 ml-3 rounded-md bg-muted p-0.5">
+          {/* Visual mode button */}
+          {(showCodeButton || showChatButton) && (
+            <button
+              onClick={() => toggleMode("visual")}
+              className={`p-1 rounded transition-colors ${
+                nodeMode === "visual"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:bg-accent hover:text-foreground text-muted-foreground"
+              }`}
+              title="Visual mode"
+            >
+              <Eye className="w-3.5 h-3.5" />
+            </button>
+          )}
           {/* Chat mode button for custom processors */}
           {showChatButton && (
             <button
               onClick={() => toggleMode("chat")}
               className={`p-1 rounded transition-colors ${
                 nodeMode === "chat" 
-                  ? "bg-primary text-primary-foreground" 
-                  : "hover:bg-accent hover:text-primary text-muted-foreground"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:bg-accent hover:text-foreground text-muted-foreground"
               }`}
               title="Chat mode - AI generate processor"
             >
-              <MessageSquare className="w-3.5 h-3.5" />
+              <BrainCog className="w-3.5 h-3.5" />
             </button>
           )}
           {/* Code mode button */}
@@ -1267,12 +1351,12 @@ function ScopeNode({ id, data, selected }: NodeProps) {
               onClick={() => toggleMode("code")}
               className={`p-1 rounded transition-colors ${
                 nodeMode === "code" 
-                  ? "bg-primary text-primary-foreground" 
-                  : "hover:bg-accent hover:text-primary text-muted-foreground"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:bg-accent hover:text-foreground text-muted-foreground"
               }`}
               title={nodeMode === "code" ? "Code mode" : "Switch to code mode"}
             >
-              {nodeMode === "code" ? <Eye className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
+              { <Code className="w-3.5 h-3.5" />}
             </button>
           )}
         <button

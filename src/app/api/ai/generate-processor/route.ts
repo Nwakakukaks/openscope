@@ -244,7 +244,17 @@ The pipeline should:
 - Be a ${pipelineType.toLowerCase()} (runs ${kind === "preprocessor" ? "before" : "after"} the main generation)
 - Use runtime parameters for all user-adjustable values
 - Follow the exact structure shown above
-- Include appropriate effect logic for the described functionality`;
+- Include appropriate effect logic for the described functionality
+
+IMPORTANT: Generate 2-5 meaningful runtime parameters that users can adjust in the visual editor. Each parameter MUST include:
+- A descriptive "label" in ui_field_config (e.g., label="Intensity", label="Radius")
+- An "order" number for UI ordering
+- Appropriate min/max (ge/le) constraints
+- A default value that makes sense for the effect
+
+For example, if generating a blur effect, include parameters like:
+- intensity: float with ge=0.0, le=1.0, default=0.5
+- radius: int with ge=1, le=20, default=5`;
 
     const response = await fetch(GROQ_API_URL, {
       method: "POST",

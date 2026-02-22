@@ -45,7 +45,7 @@ export interface CloudStatus {
 
 const SCOPE_API_URL = "/api/scope";
 
-const getBackendUrl = () => {
+export const getBackendUrl = () => {
   if (typeof window === "undefined") return "";
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
@@ -53,6 +53,7 @@ const getBackendUrl = () => {
   if (apiUrl) {
     return apiUrl;
   }
+  return "";
 };
 
 export function useScopeServer() {
@@ -466,6 +467,7 @@ export function useScopeServer() {
 
   // Send parameter update via WebRTC data channel
   const sendParameterUpdate = useCallback((params: Record<string, unknown>) => {
+    console.log("[useScopeServer] sendParameterUpdate called with:", JSON.stringify(params, null, 2));
     if (
       dataChannelRef.current &&
       dataChannelRef.current.readyState === "open"
@@ -475,9 +477,9 @@ export function useScopeServer() {
         ...params,
       });
       dataChannelRef.current.send(message);
-      console.log("[OpenScope] Sent parameter update:", params);
+      console.log("[useScopeServer] Parameter update sent via data channel:", params);
     } else {
-      console.warn("[OpenScope] Data channel not ready for parameter update");
+      console.warn("[useScopeServer] Data channel not ready for parameter update! readyState:", dataChannelRef.current?.readyState);
     }
   }, []);
 

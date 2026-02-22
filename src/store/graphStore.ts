@@ -486,6 +486,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     // Handle pipeline_ type (e.g., pipeline_animateDiff)
     if (type.startsWith("pipeline_")) {
       const pipelineId = type.replace("pipeline_", "");
+      const usage = config?.usage as string | undefined;
       
       // Handle custom pre/post processor - create placeholder that can be renamed
       if (pipelineId === "customPreprocessor") {
@@ -499,19 +500,32 @@ export const useGraphStore = create<GraphState>((set, get) => ({
           config: { pipelineId: "my-postprocessor", isCustomPipeline: true, usage: "postprocessor" },
         };
       } else {
-        // Built-in pipelines - show as Preprocessor or Postprocessor based on the pipeline ID
-        const postprocessorPipelines = ["bloom", "cosmic-vfx", "vfx-pack"];
-        const isPost = postprocessorPipelines.includes(pipelineId);
+        // Built-in pipelines - determine label based on usage config or pipeline ID
+        let label = "Main Pipeline";
+        if (usage === "preprocessor") {
+          label = "Preprocessor";
+        } else if (usage === "postprocessor") {
+          label = "Postprocessor";
+        } else {
+          // Fallback to checking known pipeline IDs for backward compatibility
+          const postprocessorPipelines = ["bloom", "cosmic-vfx", "vfx-pack", "rife", "kaleido-scope-post"];
+          const preprocessorPipelines = ["scribble", "gray", "optical-flow", "kaleido-scope-pre"];
+          if (postprocessorPipelines.includes(pipelineId)) {
+            label = "Postprocessor";
+          } else if (preprocessorPipelines.includes(pipelineId)) {
+            label = "Preprocessor";
+          }
+        }
         defaults = {
-          label: isPost ? "Postprocessor" : "Preprocessor",
-          config: { pipelineId },
+          label,
+          config: { pipelineId, usage },
         };
       }
     }
 
   
-    if (type === "parameters" && config?.createNewKind) {
-      labelOverride = config.createNewKind === "preprocessor" ? "Pre-processor" : "Post-processor";
+    if ((type === "parameters" || type === "custom") && config?.createNewKind) {
+      labelOverride = config.createNewKind === "preprocessor" ? "Preprocessor" : "Postprocessor";
     }
     
     const newNode: Node<NodeData> = {

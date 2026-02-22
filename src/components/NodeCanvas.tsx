@@ -15,6 +15,7 @@ import "@xyflow/react/dist/style.css";
 import { useGraphStore, nodeDefaults } from "@/store/graphStore";
 import ScopeNode from "./ScopeNode";
 import { Wrench } from "lucide-react";
+import { generateNodeCode } from "@/lib/codeGenerator";
 import { useMemo } from "react";
 
 const nodeTypes = {
@@ -83,6 +84,7 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
       if (!nodeType || !wrapperRef.current) return;
       const createNewKind = event.dataTransfer.getData("createNewKind") || undefined;
       const pipelineId = event.dataTransfer.getData("pipelineId") || undefined;
+      const usage = event.dataTransfer.getData("usage") || undefined;
 
       const reactFlowBounds = wrapperRef.current.getBoundingClientRect();
       const position = {
@@ -94,7 +96,7 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
       if (nodeType === "pipeline_customPreprocessor") {
         addNode("custom", position, { 
           createNewKind: "preprocessor",
-          name: "Custom Preprocessor",
+          pythonCode: generateNodeCode("custom", { createNewKind: "preprocessor" }),
           isCodeMode: true,
         });
         return;
@@ -102,7 +104,7 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
       if (nodeType === "pipeline_customPostprocessor") {
         addNode("custom", position, { 
           createNewKind: "postprocessor",
-          name: "Custom Postprocessor",
+          pythonCode: generateNodeCode("custom", { createNewKind: "postprocessor" }),
           isCodeMode: true,
         });
         return;
@@ -114,13 +116,12 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
         // Add the custom node - the in-canvas chat will appear when selected
         addNode("custom", position, { 
           createNewKind,
-          name: createNewKind === "preprocessor" ? "Custom Preprocessor" : "Custom Postprocessor",
-          code: "# Describe your processor and AI will generate the code",
+          pythonCode: generateNodeCode("custom", { createNewKind }),
           isCodeMode: true,
         });
       } else if (pipelineId) {
-        // Pass pipelineId from drag data to addNode
-        addNode(nodeType, position, { pipelineId });
+        // Pass pipelineId and usage from drag data to addNode
+        addNode(nodeType, position, { pipelineId, usage });
       } else {
         addNode(nodeType, position);
       }

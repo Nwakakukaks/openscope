@@ -2321,16 +2321,357 @@ def process_frames(frames, **kwargs):
     return result`,
     
     custom: (cfg) => {
-      const code = cfg.code as string || "# Custom effect\nreturn frames";
-      return code;
+      const code = cfg.code as string;
+      if (code) return code;
+
+      const createNewKind = cfg.createNewKind as string;
+      const isPreprocessor = createNewKind === "preprocessor";
+      const kindLabel = isPreprocessor ? "Preprocessor" : "Postprocessor";
+
+      return `# Custom ${kindLabel}
+# Define your processing logic below.
+# The frames parameter is a list of video frames in (H, W, C) format.
+# Return the processed frames.
+
+import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """
+    Custom ${kindLabel} processing function.
+    - frames: list of video frames in [0, 255] range
+    - kwargs: additional parameters passed at runtime
+    """
+    # Your processing code here
+    # Example: apply a simple filter to each frame
+    # for i, frame in enumerate(frames):
+    #     # process frame
+    #     pass
+    
+    return frames
+`;
     },
+
+    // Pipeline-prefixed nodes (from plugins)
+    "pipeline_kaleido-scope": (cfg) => `import torch
+import numpy as np
+from scope.cloud import cloud_proxy
+
+@cloud_proxy
+class KaleidoScopePipeline:
+    """Kaleidoscope/mirror symmetry effect from kaleido-scope plugin"""
+    
+    def __init__(self):
+        pass
+    
+    def process(self, frames, **kwargs):
+        # Remote inference via Scope cloud
+        # Parameters from config:
+        enabled = kwargs.get("kaleidoscope_enabled", True)
+        mix = kwargs.get("kaleidoscope_mix", 1.0)
+        mirror_mode = kwargs.get("kaleidoscope_mirror_mode", "none")
+        rotational_enabled = kwargs.get("kaleidoscope_rotational_enabled", True)
+        rotational_slices = kwargs.get("kaleidoscope_slices", 6)
+        rotation = kwargs.get("kaleidoscope_rotation", 0.0)
+        zoom = kwargs.get("kaleidoscope_zoom", 1.0)
+        warp = kwargs.get("kaleidoscope_warp", 0.0)
+        
+        # Implementation in kaleido_scope/effects/kaleido.py
+        return frames`,
+
+    "pipeline_bloom": (cfg) => `import torch
+import numpy as np
+from scope.cloud import cloud_proxy
+
+@cloud_proxy
+class BloomPipeline:
+    """Bloom/glow post-processing effect from scope-bloom plugin"""
+    
+    def __init__(self):
+        pass
+    
+    def process(self, frames, **kwargs):
+        # Remote inference via Scope cloud
+        # Parameters from config:
+        threshold = kwargs.get("bloom_threshold", 0.8)
+        soft_knee = kwargs.get("bloom_soft_knee", 0.5)
+        intensity = kwargs.get("bloom_intensity", 1.0)
+        radius = kwargs.get("bloom_radius", 8)
+        downsample = kwargs.get("bloom_downsample", 1)
+        
+        # Implementation in scope-bloom/my_scope_plugin/pipelines/bloom_pipeline.py
+        return frames`,
+
+    "pipeline_cosmic-vfx": (cfg) => `import torch
+import numpy as np
+from scope.cloud import cloud_proxy
+
+@cloud_proxy
+class CosmicVFXPipeline:
+    """30+ visual effects from scope-cosmic-vfx plugin"""
+    
+    def __init__(self):
+        pass
+    
+    def process(self, frames, **kwargs):
+        # Remote inference via Scope cloud
+        # Parameters from config:
+        enable_glitch = kwargs.get("cosmic_enable_glitch", True)
+        glitch_intensity = kwargs.get("cosmic_glitch_intensity", 1.0)
+        enable_retro = kwargs.get("cosmic_enable_retro", True)
+        retro_intensity = kwargs.get("cosmic_retro_intensity", 1.0)
+        enable_distortion = kwargs.get("cosmic_enable_distortion", True)
+        distortion_intensity = kwargs.get("cosmic_distortion_intensity", 1.0)
+        enable_color = kwargs.get("cosmic_enable_color", False)
+        color_intensity = kwargs.get("cosmic_color_intensity", 1.0)
+        intensity = kwargs.get("cosmic_intensity", 1.0)
+        
+        # Implementation in scope-cosmic-vfx/src/scope_cosmic_vfx/pipeline.py
+        return frames`,
+
+    "pipeline_vfx-pack": (cfg) => `import torch
+import numpy as np
+from scope.cloud import cloud_proxy
+
+@cloud_proxy
+class VFXPackPipeline:
+    """VFX pack: Chromatic, VHS, Halftone from scope-vfx plugin"""
+    
+    def __init__(self):
+        pass
+    
+    def process(self, frames, **kwargs):
+        # Remote inference via Scope cloud
+        # Parameters from config:
+        chromatic_enabled = kwargs.get("vfx_chromatic_enabled", True)
+        chromatic_intensity = kwargs.get("vfx_chromatic_intensity", 0.3)
+        vhs_enabled = kwargs.get("vfx_vhs_enabled", False)
+        halftone_enabled = kwargs.get("vfx_halftone_enabled", False)
+        
+        # Implementation in scope-vfx/src/scope_vfx/pipeline.py
+        return frames`,
+
+    "pipeline_yolo_mask": (cfg) => `import torch
+import numpy as np
+from scope.cloud import cloud_proxy
+
+@cloud_proxy
+class YOLOMaskPipeline:
+    """YOLO segmentation from scope_yolo_mask plugin"""
+    
+    def __init__(self):
+        pass
+    
+    def process(self, frames, **kwargs):
+        # Remote inference via Scope cloud
+        # Parameters from config:
+        model_size = kwargs.get("yolo_model_size", "nano")
+        target_class = kwargs.get("yolo_target_class", "person")
+        confidence = kwargs.get("yolo_confidence", 0.5)
+        
+        # Implementation in scope_yolo_mask/src/scope_yolo_mask/pipeline.py
+        return frames`,
+
+    // Additional built-in node types
+    kaleido: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """Kaleidoscope/symmetry effect"""
+    slices = kwargs.get("kaleido_slices", ${cfg.slices ?? 6})
+    rotation = kwargs.get("kaleido_rotation", ${cfg.rotation ?? 0})
+    zoom = kwargs.get("kaleido_zoom", ${cfg.zoom ?? 1.0})
+    # Implementation using torch for GPU acceleration
+    return frames`,
+
+    blend: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """Blend two video sources"""
+    mode = kwargs.get("blend_mode", "${cfg.mode ?? 'add'}")
+    opacity = kwargs.get("blend_opacity", ${cfg.opacity ?? 0.5})
+    # Requires second input frames
+    return frames`,
+
+    segmentation: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """AI segmentation for object detection/masking"""
+    model = kwargs.get("segmentation_model", "${cfg.model ?? 'sam'}")
+    target_class = kwargs.get("target_class", "${cfg.targetClass ?? 'person'}")
+    confidence = kwargs.get("confidence_threshold", ${cfg.confidence ?? 0.5})
+    # Returns frames and masks
+    return frames, None`,
+
+    depthEstimation: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """Generate depth maps for VACE structural guidance"""
+    model = kwargs.get("depth_model", "${cfg.model ?? 'depth-anything'}")
+    # Returns frames and depth maps
+    return frames, None`,
+
+    backgroundRemoval: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """Remove background with transparent alpha"""
+    model = kwargs.get("bg_model", "${cfg.model ?? 'u2net'}")
+    # Returns RGBA frames
+    return frames`,
+
+    upscaling: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """AI-powered video resolution upscaling"""
+    scale = kwargs.get("upscale_scale", ${parseInt(String(cfg.scale ?? 2))})
+    model = kwargs.get("upscale_model", "${cfg.model ?? 'realesrgan'}")
+    # Implementation using AI upscaling model
+    return frames`,
+
+    denoising: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """AI video denoising"""
+    strength = kwargs.get("denoise_strength", ${cfg.strength ?? 0.5})
+    method = kwargs.get("denoise_method", "${cfg.method ?? 'bm3d'}")
+    # Implementation using denoising model
+    return frames`,
+
+    styleTransfer: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """Apply artistic styles to video"""
+    style = kwargs.get("style_type", "${cfg.style ?? 'anime'}")
+    strength = kwargs.get("style_strength", ${cfg.strength ?? 0.7})
+    # Implementation using style transfer model
+    return frames`,
+
+    yoloMask: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """YOLO segmentation for object detection/masking"""
+    model_size = kwargs.get("yolo_model_size", "${cfg.modelSize ?? 'nano'}")
+    target_class = kwargs.get("yolo_target_class", "${cfg.targetClass ?? 'person'}")
+    confidence = kwargs.get("yolo_confidence", ${cfg.confidenceThreshold ?? 0.5})
+    # Returns frames and masks
+    return frames, None`,
+
+    cosmicVFX: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """30+ visual effects"""
+    enable_glitch = kwargs.get("cosmic_enable_glitch", True)
+    glitch_intensity = kwargs.get("cosmic_glitch_intensity", 1.0)
+    enable_retro = kwargs.get("cosmic_enable_retro", True)
+    retro_intensity = kwargs.get("cosmic_retro_intensity", 1.0)
+    enable_distortion = kwargs.get("cosmic_enable_distortion", True)
+    distortion_intensity = kwargs.get("cosmic_distortion_intensity", 1.0)
+    enable_color = kwargs.get("cosmic_enable_color", False)
+    color_intensity = kwargs.get("cosmic_color_intensity", 1.0)
+    intensity = kwargs.get("cosmic_intensity", 1.0)
+    # Implementation in scope-cosmic-vfx
+    return frames`,
+
+    vfxPack: (cfg) => `import torch
+import numpy as np
+
+def process_frames(frames, **kwargs):
+    """VFX pack: Chromatic, VHS, Halftone"""
+    chromatic_enabled = kwargs.get("vfx_chromatic_enabled", True)
+    chromatic_intensity = kwargs.get("vfx_chromatic_intensity", 0.3)
+    vhs_enabled = kwargs.get("vfx_vhs_enabled", False)
+    halftone_enabled = kwargs.get("vfx_halftone_enabled", False)
+    # Implementation in scope-vfx
+    return frames`,
+
+    mask: (cfg) => `import torch
+
+def process_frames(frames, **kwargs):
+    """Generate masks for specific objects"""
+    target_class = kwargs.get("target_class", "${cfg.targetClass ?? 'person'}")
+    confidence = kwargs.get("confidence_threshold", ${cfg.confidence ?? 0.5})
+    return frames, None`,
+
+    videoInput: (cfg) => `import cv2
+
+def process_frames(**kwargs):
+    """Video input node - captures frames from camera or file"""
+    frames = kwargs.get("frames", 1)
+    # Frame capture implementation
+    return []`,
+
+    textPrompt: (cfg) => `def process_frames(**kwargs):
+    """Text prompt input with optional weight for AI generation"""
+    text = kwargs.get("text", "")
+    weight = kwargs.get("weight", 1.0)
+    return {"text": text, "weight": weight}`,
+
+    imageInput: (cfg) => `from PIL import Image
+import numpy as np
+
+def process_frames(**kwargs):
+    """Image reference input for image-to-video pipelines"""
+    path = kwargs.get("path", "")
+    # Load image and convert to array
+    return None`,
+
+    parameters: (cfg) => `def process_frames(**kwargs):
+    """Key-value parameter storage for runtime configuration"""
+    key = kwargs.get("key", "")
+    value = kwargs.get("value", "")
+    return {key: value}`,
+
+    pipelineOutput: (cfg) => `def process_frames(frames, **kwargs):
+    """Main pipeline output marker"""
+    usage = kwargs.get("usage", "main")
+    return frames`,
+
+    noteGuide: (cfg) => `def process_frames(**kwargs):
+    """Note/guide node"""
+    return None`,
+
+    pluginConfig: (cfg) => `from scope.core.pipeline import BasePipeline, BasePipelineConfig
+
+class PluginConfig(BasePipelineConfig):
+    pipeline_id: str = "${cfg.pipelineId ?? 'my_plugin'}"
+    pipeline_name: str = "${cfg.pluginName ?? 'My Plugin'}"
+    usage: str = "${cfg.usage ?? 'main'}"
+    mode: str = "${cfg.mode ?? 'video'}"
+    supports_prompts: bool = ${cfg.supportsPrompts !== false}`,
+
+    pipeline: (cfg) => `from scope.cloud import cloud_proxy
+
+@cloud_proxy
+class Pipeline:
+    """Main pipeline from Scope server"""
+    
+    def __init__(self):
+        pass
+    
+    def process(self, frames, **kwargs):
+        # Remote inference via Scope cloud
+        pipeline_id = "${cfg.pipelineId ?? 'passthrough'}"
+        return frames`,
   };
+
+  // Check for pipeline_ prefix first
+  if (nodeType.startsWith("pipeline_")) {
+    const pipelineId = nodeType.replace("pipeline_", "");
+    if (EFFECT_TEMPLATES[`pipeline_${pipelineId}`]) {
+      return EFFECT_TEMPLATES[`pipeline_${pipelineId}`](config);
+    }
+  }
 
   if (EFFECT_TEMPLATES[nodeType]) {
     return EFFECT_TEMPLATES[nodeType](config);
   }
   
   return `# No template for ${nodeType}
+# This node type does not have a code template yet.
+# Use the visual mode to configure this node.
+
 def process_frames(frames, **kwargs):
     return frames`;
 }

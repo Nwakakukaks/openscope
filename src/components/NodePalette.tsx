@@ -30,9 +30,13 @@ import {
   Zap,
   AlertCircle,
   Tv,
+  BrainCog,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import { showError } from "@/lib/toast";
+import { getBackendUrl } from "@/hooks/useScopeServer";
+
+const SCOPE_API_URL = "/api/scope";
 
 interface NodeCategory {
   name: string;
@@ -46,22 +50,35 @@ interface NodeCategory {
     pipelineId?: string;
     enabled?: boolean;
     createNewKind?: "preprocessor" | "postprocessor";
+    usage?: "main" | "preprocessor" | "postprocessor";
   }[];
   isLoading?: boolean;
 }
 
+interface SchemaProperty {
+  type?: string;
+  default?: unknown;
+  description?: string;
+  ui?: {
+    is_load_param?: boolean;
+    label?: string;
+  };
+}
+
 interface PipelineInfo {
-  pipeline_id: string;
-  pipeline_name: string;
-  pipeline_description?: string;
+  id: string;
+  name: string;
+  description?: string;
   supported_modes: string[];
   default_mode?: string;
   plugin_name?: string;
+  config_schema?: Record<string, unknown>;
+  usage?: string[];
 }
 
 export default function NodePalette() {
   const [expanded, setExpanded] = useState<string[]>([]);
-  const [pipelines, setPipelines] = useState<PipelineInfo[]>([]);
+  const [pipelines, setPipelines] = useState<Record<string, PipelineInfo>>({});
   const [pipelinesLoading, setPipelinesLoading] = useState(false);
   const [pipelinesError, setPipelinesError] = useState<string | null>(null);
   const fetchAttempted = useRef(false);
@@ -104,21 +121,26 @@ export default function NodePalette() {
     // Prevent duplicate fetches using ref
     if (fetchAttempted.current || pipelinesLoading) return;
     fetchAttempted.current = true;
-    
+
     setPipelinesLoading(true);
     setPipelinesError(null);
     try {
-      const response = await fetch("/api/scope/pipelines/list");
+      const response = await fetch(`${getBackendUrl()}${SCOPE_API_URL}/pipelines`);
       if (!response.ok) {
         throw new Error(`Failed to fetch pipelines: ${response.status}`);
       }
       const data = await response.json();
-      setPipelines(data);
-    
+
+      if (data.pipelines && typeof data.pipelines === "object") {
+        setPipelines(data.pipelines);
+      } else {
+        setPipelines({});
+      }
+
     } catch (error) {
       console.error("Failed to fetch pipelines:", error);
       setPipelinesError("Could not connect to Scope server");
-    
+
       if (fetchAttempted.current) {
         showError("Failed to load pipelines", "Could not connect to Scope server");
       }
@@ -136,7 +158,8 @@ export default function NodePalette() {
     e: React.DragEvent,
     nodeType: string,
     pipelineId?: string,
-    createNewKind?: "preprocessor" | "postprocessor"
+    createNewKind?: "preprocessor" | "postprocessor",
+    usage?: "main" | "preprocessor" | "postprocessor"
   ) => {
     e.dataTransfer.setData("nodeType", nodeType);
     if (pipelineId) {
@@ -145,27 +168,34 @@ export default function NodePalette() {
     if (createNewKind) {
       e.dataTransfer.setData("createNewKind", createNewKind);
     }
+    if (usage) {
+      e.dataTransfer.setData("usage", usage);
+    }
     e.dataTransfer.effectAllowed = "move";
   };
 
+  const getPipelineUsage = (p: PipelineInfo): string => {
+    if (p.usage?.includes("preprocessor")) return "preprocessor";
+    if (p.usage?.includes("postprocessor")) return "postprocessor";
+    return "main";
+  };
+
   const isPreprocessor = (p: PipelineInfo): boolean => {
-    const id = p.pipeline_id;
-    return id === "yolo_mask" || id === "kaleido-scope-pre";
+    return p.usage?.includes("preprocessor") ?? false;
   };
 
   const isPostprocessor = (p: PipelineInfo): boolean => {
-    const id = p.pipeline_id;
-    return id === "bloom" || id === "cosmic-vfx" || id === "vfx-pack" || id === "kaleido-scope-post";
+    return p.usage?.includes("postprocessor") ?? false;
   };
 
-  const pipelineNodes = pipelines
-    .filter(p => !isPreprocessor(p) && !isPostprocessor(p))
+  const pipelineNodes = Object.values(pipelines)
     .map((p) => ({
-      type: `pipeline_${p.pipeline_id}`,
-      label: p.pipeline_name,
+      type: `pipeline_${p.id}`,
+      label: p.name,
       icon: <Zap className="w-4 h-4" />,
-      description: p.pipeline_description || `${p.supported_modes?.join(", ") || "video"} mode`,
-      pipelineId: p.pipeline_id,
+      description: p.description || `${p.supported_modes?.join(", ") || "video"} mode`,
+      pipelineId: p.id,
+      usage: getPipelineUsage(p) as "main" | "preprocessor" | "postprocessor",
     }));
 
   const getInputNodes = () => {
@@ -183,33 +213,35 @@ export default function NodePalette() {
   };
 
   const getPreprocessorNodes = () => {
-    const preprocessorPipelines = pipelines.filter(isPreprocessor);
-    
+    const preprocessorPipelines = Object.values(pipelines).filter(isPreprocessor);
+
     return [
-      { type: "pipeline_customPreprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "preprocessor" as const },
+      { type: "pipeline_customPreprocessor", label: "Create New (Beta)", icon: <BrainCog className="w-4 h-4" />, description: "Build new processor with AI", enabled: true, createNewKind: "preprocessor" as const },
       ...preprocessorPipelines.map(p => ({
-        type: `pipeline_${p.pipeline_id}`,
-        label: p.pipeline_name,
+        type: `pipeline_${p.id}`,
+        label: p.name,
         icon: <Hexagon className="w-4 h-4" />,
-        description: p.pipeline_description || "Preprocessor pipeline",
+        description: p.description || "Preprocessor pipeline",
         enabled: true,
-        pipelineId: p.pipeline_id,
+        pipelineId: p.id,
+        usage: "preprocessor" as const,
       })),
     ];
   };
 
   const getPostprocessorNodes = () => {
-    const postprocessorPipelines = pipelines.filter(isPostprocessor);
-    
+    const postprocessorPipelines = Object.values(pipelines).filter(isPostprocessor);
+
     return [
-      { type: "pipeline_customPostprocessor", label: "Create New (Beta)", icon: <Sparkles className="w-4 h-4" />, description: "AI generate a processor", enabled: true, createNewKind: "postprocessor" as const },
+      { type: "pipeline_customPostprocessor", label: "Create New (Beta)", icon: <BrainCog className="w-4 h-4" />, description: "Build new processor with AI", enabled: true, createNewKind: "postprocessor" as const },
       ...postprocessorPipelines.map(p => ({
-        type: `pipeline_${p.pipeline_id}`,
-        label: p.pipeline_name,
-        icon: <Sparkles className="w-4 h-4" />,
-        description: p.pipeline_description || "Postprocessor pipeline",
+        type: `pipeline_${p.id}`,
+        label: p.name,
+        icon: <Play className="w-4 h-4" />,
+        description: p.description || "Postprocessor pipeline",
         enabled: true,
-        pipelineId: p.pipeline_id,
+        pipelineId: p.id,
+        usage: "postprocessor" as const,
       })),
     ];
   };
@@ -223,7 +255,7 @@ export default function NodePalette() {
         { type: "pluginConfig", label: "Plugin Config", icon: <Plug className="w-4 h-4" />, description: "Pipeline settings" },
       ],
     },
-   
+
     {
       name: "Input",
       icon: <Video className="w-4 h-4" />,
@@ -239,7 +271,7 @@ export default function NodePalette() {
     },
     {
       name: "Pre-processor",
-      icon: <Layers className="w-4 h-4" />,
+      icon: <Hexagon className="w-4 h-4" />,
       color: "text-slate-400",
       nodes: getPreprocessorNodes(),
     },
@@ -273,10 +305,10 @@ export default function NodePalette() {
       color: "text-slate-400",
       nodes: [
         { type: "lessonGettingStarted", label: "1. Getting Started", icon: <StickyNote className="w-4 h-4" />, description: "What is OpenScope?" },
-        { type: "lessonFirstProcessor", label: "2. First Processor", icon: <StickyNote className="w-4 h-4" />, description: "Create your first processor" },
-        { type: "lessonNodeTypes", label: "3. Node Types", icon: <StickyNote className="w-4 h-4" />, description: "Understanding the nodes" },
-        { type: "lessonPreprocessors", label: "4. Preprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Working with preprocessors" },
-        { type: "lessonPostprocessors", label: "5. Postprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Working with postprocessors" },
+        { type: "lessonFirstProcessor", label: "2. First Processor", icon: <StickyNote className="w-4 h-4" />, description: "Create a custom processor with AI" },
+        { type: "lessonNodeTypes", label: "3. Node Types", icon: <StickyNote className="w-4 h-4" />, description: "API pipelines + custom AI processors" },
+        { type: "lessonPreprocessors", label: "4. Preprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Use API pipelines or AI to create" },
+        { type: "lessonPostprocessors", label: "5. Postprocessors", icon: <StickyNote className="w-4 h-4" />, description: "Use API pipelines or AI to create" },
         { type: "noteGuide", label: "Custom Note", icon: <StickyNote className="w-4 h-4" />, description: "Add your own note" },
       ],
     },
@@ -295,70 +327,69 @@ export default function NodePalette() {
         {nodeCategories.map((category) => {
           const enabled = isCategoryEnabled(category.name);
           return (
-          <div key={category.name} className="mb-2">
-            <button
-              onClick={() => toggleCategory(category.name)}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg hover:bg-accent transition-colors"
-            >
-              <div className={`flex items-center gap-2 ${category.color}`}>
-                {category.icon}
-                <span>{category.name}</span>
-              </div>
-              <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform ${expanded.includes(category.name) ? "rotate-180" : ""}`}
-              />
-            </button>
-            {expanded.includes(category.name) && (
-              <div className="mt-1 space-y-1 ml-2">
-                {category.isLoading ? (
-                  <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Loading...
-                  </div>
-                ) : category.nodes.length > 0 ? (
-                  category.nodes.map((node) => {
-                    const nodeEnabled = enabled && (node.enabled !== false);
-                    const isComingSoon = node.enabled === false;
-                    return (
-                    <div
-                      key={node.type}
-                      draggable={nodeEnabled}
-                      onDragStart={(e) => nodeEnabled && handleDragStart(e, node.type, node.pipelineId, node.createNewKind)}
-                      title={!nodeEnabled ? (node.enabled === false ? "Coming Soon - This processor is not yet available" : "Set usage to include this category in Plugin Config to enable") : undefined}
-                      className={`group flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all ${
-                        nodeEnabled
-                          ? "text-muted-foreground hover:text-foreground hover:bg-accent/50 cursor-grab active:cursor-grabbing hover:border-border"
-                          : "text-muted-foreground/50 cursor-not-allowed border-transparent opacity-60"
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded flex items-center justify-center bg-background border ${nodeEnabled ? "border-border " + category.color : "border-border/50 text-muted-foreground/40"} ${nodeEnabled ? "group-hover:border-primary/30" : ""}`}>
-                        {node.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium flex items-center gap-2">
-                          {node.label}
-                        
-                        </div>
-                        <div className="text-xs truncate">{node.description}</div>
-                      </div>
+            <div key={category.name} className="mb-2">
+              <button
+                onClick={() => toggleCategory(category.name)}
+                className="w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-lg hover:bg-accent transition-colors"
+              >
+                <div className={`flex items-center gap-2 ${category.color}`}>
+                  {category.icon}
+                  <span>{category.name}</span>
+                </div>
+                <ChevronDown
+                  className={`w-4 h-4 text-muted-foreground transition-transform ${expanded.includes(category.name) ? "rotate-180" : ""}`}
+                />
+              </button>
+              {expanded.includes(category.name) && (
+                <div className="mt-1 space-y-1 ml-2">
+                  {category.isLoading ? (
+                    <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading...
                     </div>
-                  );
-                  })
-                ) : (
-                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
-                    <AlertCircle className="w-4 h-4" />
-                    {pipelinesError || "No pipelines found"}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                  ) : category.nodes.length > 0 ? (
+                    category.nodes.map((node) => {
+                      const nodeEnabled = enabled && (node.enabled !== false);
+                      const isComingSoon = node.enabled === false;
+                      return (
+                        <div
+                          key={node.type}
+                          draggable={nodeEnabled}
+                          onDragStart={(e) => nodeEnabled && handleDragStart(e, node.type, node.pipelineId, node.createNewKind, node.usage)}
+                          title={!nodeEnabled ? (node.enabled === false ? "Coming Soon - This processor is not yet available" : "Set usage to include this category in Plugin Config to enable") : undefined}
+                          className={`group flex items-center gap-3 px-3 py-2.5 text-sm rounded-lg transition-all ${nodeEnabled
+                              ? "text-muted-foreground hover:text-foreground hover:bg-accent/50 cursor-grab active:cursor-grabbing hover:border-border"
+                              : "text-muted-foreground/50 cursor-not-allowed border-transparent opacity-60"
+                            }`}
+                        >
+                          <div className={`w-8 h-8 rounded flex items-center justify-center bg-background border ${nodeEnabled ? "border-border " + category.color : "border-border/50 text-muted-foreground/40"} ${nodeEnabled ? "group-hover:border-primary/30" : ""}`}>
+                            {node.icon}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium flex items-center gap-2">
+                              {node.label}
+
+                            </div>
+                            <div className="text-xs truncate">{node.description}</div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                      <AlertCircle className="w-4 h-4" />
+                      {pipelinesError || "No pipelines found"}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
       <div className="p-3 border-t border-border">
         <div className="text-xs text-muted-foreground text-center">
-          This service is currently on Beta ❤️ 
+          This service is currently on Beta ❤️
         </div>
       </div>
     </aside>
