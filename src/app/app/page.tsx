@@ -27,17 +27,20 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [tourPropertiesPanel, setTourPropertiesPanel] = useState(false);
   const [hasClickedRun, setHasClickedRun] = useState(false);
+  const hasRunInit = useRef(false);
 
   const hasSeenRunPrompt = typeof window !== "undefined" && localStorage.getItem("openscope_run_prompt") === "true";
 
   useEffect(() => {
+    if (hasRunInit.current) return;
+    hasRunInit.current = true;
+    
     const hasTour = hasSeenTour();
     if (!hasTour) {
       setShowTour(true);
     } else {
       loadDefaultWorkflow();
       showSuccess("Ready to build!", "Click Run to preview or Clear to start from a fresh canvas");
-
     }
   }, []);
 
@@ -152,7 +155,7 @@ export default function Home() {
   useEffect(() => {
     const handleVideoStreamReady = (event: Event) => {
       const customEvent = event as CustomEvent<{ stream: MediaStream; nodeId: string }>;
-      console.log("[OpenScope] Video stream ready from node:", customEvent.detail.nodeId);
+
       setLocalStream(customEvent.detail.stream);
     };
 
