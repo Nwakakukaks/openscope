@@ -21,6 +21,7 @@ import {
 import { useGraphStore } from "@/store/graphStore";
 import CodeEditor from "./CodeEditor";
 import { showSuccess, showError } from "@/lib/toast";
+import { getCodeForNodeType } from "@/lib/codeTemplates";
 
 const NODE_STYLE =
   "group min-w-[240px] max-w-[320px] rounded-lg bg-card border border-border transition-all cursor-grab active:cursor-grabbing relative";
@@ -50,7 +51,14 @@ const NODE_GUIDES: Record<string, string> = {
   parameters: "Key-value parameters for runtime configuration. Pass custom values to your pipeline.",
   custom: "AI-generated processor. Describe what you want in chat mode or write code directly.",
   pipelineOutput: "Main pipeline output marker. Connect pipeline to this to mark the end.",
+  pipeline_customPreprocessor: "Starter preprocessor. Connect video on blue handle, Style nodes on purple handle.",
+  pipeline_customPostprocessor: "Starter postprocessor. Connect video on blue handle, Style nodes on purple handle.",
+  pipeline_: "Server pipeline. Connect video on blue handle, Style nodes on purple handle to add effects.",
+  style_custom: "AI-generated style effect function. Describe the visual effect in chat mode.",
 };
+
+const STYLE_NODE_GUIDE = "Style effect node. Connect the purple output to a processor's purple input to add effects.";
+const PROCESSOR_NODE_GUIDE = "Starter processor. Connect video input on left (blue), Style nodes on purple connector to add effects.";
 
 function ScopeNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as {
@@ -75,15 +83,30 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const isCodeMode = nodeData.config?.isCodeMode as boolean ?? false;
   const currentCode = nodeData.config?.pythonCode as string | undefined;
 
-  const showLeftHandle = !isEntryPoint;
+  const isStyleNode = nodeData.type.startsWith("style_");
+  
+  const showLeftHandle = !isEntryPoint && !isStyleNode;
   const showRightHandle = !isOutput;
 
-  const isCustomProcessor = nodeData.type === "custom" &&
-    (nodeData.config?.createNewKind === "preprocessor" || nodeData.config?.createNewKind === "postprocessor");
+  const isCustomProcessor = (nodeData.type === "custom" &&
+    (nodeData.config?.createNewKind === "preprocessor" || nodeData.config?.createNewKind === "postprocessor")) ||
+    nodeData.type === "pipeline_customPreprocessor" ||
+    nodeData.type === "pipeline_customPostprocessor";
+  
+  // Server pipeline nodes (preprocessors/postprocessors from Scope server)
+  const isServerProcessor = nodeData.type.startsWith("pipeline_") && 
+    (nodeData.config?.usage === "preprocessor" || nodeData.config?.usage === "postprocessor");
+  
+  // Any processor node (custom or server)
+  const isProcessorNode = isCustomProcessor || isServerProcessor;
+  
+  // Show style input handle for processor nodes
+  const showStyleHandle = isProcessorNode;
+  
   const processorKind = nodeData.config?.createNewKind as "preprocessor" | "postprocessor" | undefined;
 
   const [nodeMode, setNodeMode] = useState<"chat" | "code" | "visual">(
-    isCustomProcessor ? "chat" : isCodeMode ? "code" : "visual"
+    isStyleNode || isCustomProcessor ? "visual" : isCodeMode ? "code" : "visual"
   );
 
   useEffect(() => {
@@ -122,6 +145,9 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     }
     if (nodeData.type.startsWith("pipeline_")) {
       return nodeData.config?.pipelineId as string || "";
+    }
+    if (nodeData.type.startsWith("style_")) {
+      return nodeData.type.replace("style_", "").replace("_", " ") || "Style";
     }
     if (nodeData.type === "parameters") {
       const keys = Object.keys(nodeData.config || {}).filter(k => !["pipelineId", "pipelineName"].includes(k));
@@ -219,6 +245,10 @@ function ScopeNode({ id, data, selected }: NodeProps) {
 
   const guideText = nodeData.type.startsWith("pipeline_")
     ? "AI pipeline from Scope server"
+    : nodeData.type === "pipeline_customPreprocessor" || nodeData.type === "pipeline_customPostprocessor"
+    ? PROCESSOR_NODE_GUIDE
+    : nodeData.type.startsWith("style_")
+    ? STYLE_NODE_GUIDE
     : NODE_GUIDES[nodeData.type];
 
   const [chatInput, setChatInput] = useState("");
@@ -227,10 +257,10 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isCustomProcessor && selected && !nodeData.config?.pythonCode && nodeMode !== "chat") {
+    if (isStyleNode && selected && !nodeData.config?.pythonCode && nodeMode !== "chat") {
       setNodeMode("chat");
     }
-  }, [isCustomProcessor, selected, nodeData.config?.pythonCode, nodeMode]);
+  }, [isStyleNode, selected, nodeData.config?.pythonCode, nodeMode]);
 
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -247,7 +277,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
   };
 
   const handleChatSend = async () => {
-    if (!chatInput.trim() || chatLoading || !processorKind) return;
+    if (!chatInput.trim() || chatLoading) return;
 
     const isConfigured = await checkApiConfig();
     if (!isConfigured) {
@@ -265,7 +295,8 @@ function ScopeNode({ id, data, selected }: NodeProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          kind: processorKind,
+          generator_type: isCustomProcessor ? "pipeline" : "style",
+          processor_kind: processorKind,
           description: userMessage,
         })
       });
@@ -312,17 +343,15 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     }
   };
 
+  const getDefaultCodeTemplate = (): string => {
+    return getCodeForNodeType(nodeData.type, nodeData.config, nodeData.config?.createNewKind as string | undefined);
+  };
+
   const toggleMode = (newMode: "chat" | "code" | "visual") => {
     setNodeMode(newMode);
     if (newMode === "code") {
       if (!currentCode) {
-        const defaultCode = `# Define your processor here
-# frames: tensor of shape (T, H, W, C) in [0, 1] range
-# Return processed frames
-
-def process(frames, **kwargs):
-    return frames
-`;
+        const defaultCode = getDefaultCodeTemplate();
         updateNodeConfig(id, { isCodeMode: true, pythonCode: defaultCode });
       } else {
         updateNodeConfig(id, { isCodeMode: true });
@@ -332,8 +361,10 @@ def process(frames, **kwargs):
     }
   };
 
-  const showChatButton = isCustomProcessor;
-  const showCodeButton = !isOutput && !isNoteGuide;
+  const showChatButton = isStyleNode;
+  const isInputNode = ["videoInput", "textPrompt", "imageInput", "parameters"].includes(nodeData.type);
+  const showCodeButton = !isOutput && !isNoteGuide && !isInputNode;
+  const showVisualButton = !isOutput && !isNoteGuide;
 
   return (
     <div
@@ -353,7 +384,20 @@ def process(frames, **kwargs):
         <Handle
           type="target"
           position={Position.Left}
+          id="main"
           className="!w-3 !h-3 !bg-primary !border-2 !border-card"
+        />
+      )}
+
+      {/* Style input handle - for connecting Style nodes to processor */}
+      {showStyleHandle && (
+        <Handle
+          type="target"
+          position={Position.Left}
+          id="styles"
+          style={{ top: "50%", marginTop: -12 }}
+          className="!w-3 !h-3 !bg-purple-500 !border-2 !border-card"
+          title="Connect Style nodes here to add effects"
         />
       )}
 
@@ -367,7 +411,7 @@ def process(frames, **kwargs):
         </div>
         <div className="flex items-center gap-0 ml-3 rounded-md bg-muted p-0.5">
           {/* Visual mode button */}
-          {(showCodeButton || showChatButton) && (
+          {showVisualButton && (
             <button
               onClick={() => toggleMode("visual")}
               className={`p-1 rounded transition-colors ${nodeMode === "visual"
@@ -589,62 +633,13 @@ def process(frames, **kwargs):
         </div>
       )}
 
-      {/* Chat mode for custom processors */}
-      {nodeMode === "chat" && isCustomProcessor && (
+      {/* Chat mode for style nodes - AI generates effect functions */}
+      {nodeMode === "chat" && isStyleNode && (
         <div className="px-3 pb-3 mt-2 border-t border-border/40 space-y-2 min-w-12">
           <div className="text-xs text-muted-foreground bg-muted/30 p-2 rounded">
-            <span>Describe what you want this {processorKind} to do!</span>
-            <button
-              onClick={() => {
-                const guideContent = processorKind === "preprocessor"
-                  ? `We've got a growing set of pre-processor effect you can create right now, just describe what you want and it's gets created by the agent!
-
-📷 GRAYSCALE
-Convert video to black & white — lightweight, no model needed
-
-🎨 SKETCH 
-Generate scribble-style outlines from your video — great for artistic effects
-
-🔄 OPTICAL FLOW
-Track motion between frames — useful for stabilization or as input to other pipelines
-
-📐 Yolo mask
-Generate depth maps from video — powers VACE structural guidance
-
-🔮 KALEIDOSCOPE Pre
-Mirror symmetry with N-fold rotational patterns — create stunning reflective effects
-
-With many more coming soon!`
-
-                  : `We've got a growing set of post processor effect you can create right now, just describe what you want and it's gets created by the agent! 
-
-✨ CHROMATIC ABERRATION
-RGB channel displacement — that classic lens imperfection look
-
-📺 VHS / RETRO
-Scanlines, tracking distortion, noise — full retro CRT aesthetic
-
-🖼️ HALFTONE
-Newspaper dot pattern effect — retro print aesthetic
-
-🔮 KALEIDOSCOPE
-Mirror symmetry with rotational patterns — stunning reflective visuals
-
-⚡ GLITCH
-RGB split, scanlines, digital artifacts — digital corruption looks
-
-💫 BLOOM
-Soft glow around bright areas — dreamy aesthetic
-
-With many more coming soon!`;
-
-                addNode("noteGuide", { x: 100, y: 100 }, { title: `${processorKind} Guide (Beta)`, content: guideContent });
-              }}
-              className="text-primary hover:text-primary/80 underline font-medium"
-            >
-              Here's some ideas to explore
-            </button>
-
+            {isStyleNode 
+              ? "Describe the style you want to create or changes to make."
+              : "Describe what you're working on"}
           </div>
 
           <div className="space-y-2 max-h-[150px] overflow-y-auto">
@@ -671,7 +666,7 @@ With many more coming soon!`;
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={handleChatKeyDown}
-              placeholder={`Create a ${processorKind} that...`}
+              placeholder={isStyleNode ? "Describe style or changes (e.g., 'add glow')" : ""}
               className="flex-1 px-2 py-1.5 bg-muted rounded text-xs text-foreground placeholder:text-muted-foreground"
               disabled={chatLoading}
             />
@@ -713,7 +708,8 @@ With many more coming soon!`;
         <Handle
           type="source"
           position={Position.Right}
-          className="!w-3 !h-3 !bg-primary !border-2 !border-card"
+          id={isStyleNode ? "styles" : undefined}
+          className={`!w-3 !h-3 !border-2 !border-card ${isStyleNode ? "!bg-purple-500" : "!bg-primary"}`}
         />
       )}
     </div>

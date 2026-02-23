@@ -11,6 +11,7 @@ import {
   applyEdgeChanges
 } from "@xyflow/react";
 import { v4 as uuidv4 } from "uuid";
+import { getCodeForNodeType } from "@/lib/codeTemplates";
 
 export type NodeData = {
   label: string;
@@ -31,10 +32,12 @@ interface GraphState {
   deleteNode: (nodeId: string) => void;
   selectNode: (nodeId: string | null) => void;
   clearAll: () => void;
+  loadDefaultWorkflow: () => void;
   
   onNodesChange: OnNodesChange<Node<NodeData>>;
   onEdgesChange: OnEdgesChange<Edge>;
   onConnect: OnConnect;
+  addEdge: (edge: Edge) => void;
 }
 
 export const nodeDefaults: Record<string, Partial<NodeData>> = {
@@ -235,10 +238,179 @@ TIPS:
   },
 };
 
+export function getDefaultWorkflow(): { 
+  nodes: Array<{ type: string; position: { x: number; y: number }; config?: Record<string, unknown> }>;
+  edges: Array<{ source: number; target: number }>;
+} {
+  return {
+    nodes: [
+      // Welcome Note
+      {
+        type: "noteGuide",
+        position: { x: 200, y: 280 },
+        config: {
+          title: "Welcome to OpenScope! 🎉",
+          content: `OpenScope lets you build video AI pipelines visually.
+
+What's happening now 🚩:
+- Video Input → Main Pipeline → Pre-processor → Output
+- 3 Style nodes (Chromatic, VHS, Bloom) are adding effects to the video
+
+How to customize 🚩:
+1. Select the post-processor to start twerking the setting in the Properties panel
+2. Add more Style nodes from the left panel to add more effects
+3. Click the clear button in the header to begin a new section
+
+To run 🚀: Click the "Run" button in the top right to start the preview!
+
+Need help? Check the Guides section in the left panel for tutorials.`,
+        },
+      },
+      // Plugin Config
+      {
+        type: "pluginConfig",
+        position: { x: 200, y: 150 },
+        config: {
+          pipelineId: "bloom",
+          pluginName: "Starter",
+          pluginDescription: "Starter effects pipeline",
+          usage: "postprocessor",
+          mode: "video",
+          supportsPrompts: false,
+        },
+      },
+      // Video Input
+      {
+        type: "videoInput",
+        position: { x: 600, y: 150 },
+        config: {
+          videoPreviewUrl: "/sample.mp4",
+        },
+      },
+      // Main Pipeline
+      {
+        type: "pipeline",
+        position: { x: 950, y: 150 },
+        config: {
+          pipelineId: "",
+        },
+      },
+      // Post-processor
+      {
+        type: "custom",
+        position: { x: 1300, y: 250 },
+        config: {
+          createNewKind: "postprocessor",
+          pythonCode: `"""Postprocessor - Connect Style nodes to add effects."""
+
+from typing import TYPE_CHECKING
+import torch
+from scope.core.pipelines.interface import Pipeline, Requirements
+
+if TYPE_CHECKING:
+    from scope.core.pipelines.base_schema import BasePipelineConfig
+
+
+class StarterPostConfig:
+    pipeline_id = "postprocessor"
+    pipeline_name = "Postprocessor"
+    pipeline_description = "Connect Style nodes to this processor to add effects"
+    pass
+
+
+class StarterPostPipeline(Pipeline):
+    def get_config_class(cls):
+        return StarterPostConfig
+
+    def __init__(self, device=None, **kwargs):
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def Prepare(self, **kwargs):
+        return Requirements(input_size=1)
+
+    def __call__(self, **kwargs):
+        video = kwargs.get("video")
+        if video is None:
+            raise ValueError("Video required")
+        
+        frames = torch.stack([frame.squeeze(0) for frame in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        
+        result = frames
+        
+        return {"video": result.clamp(0, 1).cpu()}
+
+
+def register_pipelines(register):
+    register(StarterPostPipeline)`,
+        },
+      },
+      {
+        type: "style_chromatic",
+        position: { x: 920, y: 350 },
+        config: {
+          intensity: 0.3,
+          enabled: true,
+        },
+      },
+      // Style 2 - VHS
+      {
+        type: "style_vhs",
+        position: { x: 920, y: 450 },
+        config: {
+          scanLineIntensity: 0.3,
+          noise: 0.1,
+          tracking: 0.2,
+          enabled: true,
+        },
+      },
+      // Style 3 - Bloom
+      {
+        type: "style_bloom",
+        position: { x: 920, y: 550 },
+        config: {
+          intensity: 0.5,
+          enabled: true,
+        },
+      },
+      // Output
+      {
+        type: "pipelineOutput",
+        position: { x: 1650, y: 150 },
+        config: {},
+      },
+    ],
+    edges: [
+      // Plugin Config → Video Input
+      { source: 1, target: 2 },
+      // Video Input → Main Pipeline
+      { source: 2, target: 3 },
+      // Main Pipeline → Pre-processor
+      { source: 3, target: 4 },
+      // Pre-processor → Output
+      { source: 4, target: 8 },
+      // Style 1 → Pre-processor (purple)
+      { source: 5, target: 4 },
+      // Style 2 → Pre-processor (purple)
+      { source: 6, target: 4 },
+      // Style 3 → Pre-processor (purple)
+      { source: 7, target: 4 },
+    ],
+  };
+}
+
 export const useGraphStore = create<GraphState>((set, get) => ({
   nodes: [],
   edges: [],
   selectedNode: null,
+
+  loadDefaultWorkflow: () => {
+    const { nodes: existingNodes, addNodesWithEdges } = get();
+    if (existingNodes.length > 0) return;
+    
+    const defaultWorkflow = getDefaultWorkflow();
+    addNodesWithEdges(defaultWorkflow.nodes, defaultWorkflow.edges);
+  },
 
   addNode: (type: string, position: { x: number; y: number }, config?: Record<string, unknown>, options?: { selectNode?: boolean }) => {
     let defaults = nodeDefaults[type] || { label: type, config: {} };
@@ -320,13 +492,30 @@ export const useGraphStore = create<GraphState>((set, get) => ({
         config = { ...config, pipelineId };
       }
 
+      // Generate pythonCode for nodes that support code mode
+      if (!config.pythonCode) {
+        const codeTypes = ["pluginConfig", "custom", "pipeline", "pipeline_customPreprocessor", "pipeline_customPostprocessor"];
+        const isCodeType = codeTypes.some(t => n.type === t) || n.type.startsWith("pipeline_") || n.type.startsWith("style_");
+        if (isCodeType) {
+          config.pythonCode = getCodeForNodeType(n.type, config, config.createNewKind as string | undefined);
+        }
+      }
+
+      // Determine label based on type and createNewKind
+      let label = defaults.label || n.type;
+      if (n.type === "custom" && config.createNewKind === "preprocessor") {
+        label = "Preprocessor";
+      } else if (n.type === "custom" && config.createNewKind === "postprocessor") {
+        label = "Postprocessor";
+      }
+
       return {
         id: uuidv4(),
         type: "scopeNode",
         position,
         selected: false,
         data: {
-          label: defaults.label || n.type,
+          label,
           type: n.type,
           config,
         },
@@ -343,13 +532,23 @@ export const useGraphStore = create<GraphState>((set, get) => ({
       type.startsWith("pipeline_") || type === "pipeline";
     
     if (edges && edges.length > 0) {
-      newEdges = edges.map((e) => ({
-        id: uuidv4(),
-        source: newNodes[e.source]?.id,
-        target: newNodes[e.target]?.id,
-        type: "smoothstep",
-        animated: true,
-      }));
+      newEdges = edges.map((e) => {
+        const sourceNode = newNodes[e.source];
+        const targetNode = newNodes[e.target];
+        const isStyleToProcessor = sourceNode?.data.type.startsWith("style_") && 
+          (targetNode?.data.type === "custom" || targetNode?.data.type.startsWith("pipeline_"));
+        
+        return {
+          id: uuidv4(),
+          source: sourceNode?.id,
+          target: targetNode?.id,
+          sourceHandle: isStyleToProcessor ? "styles" : undefined,
+          targetHandle: isStyleToProcessor ? "styles" : undefined,
+          type: "smoothstep",
+          animated: true,
+          style: isStyleToProcessor ? { stroke: "#a855f7", strokeWidth: 2 } : { stroke: "hsl(var(--primary))", strokeWidth: 2 },
+        };
+      });
     } else if (newNodes.length > 1) {
       const pluginConfig = newNodes.find(n => n.data.type === "pluginConfig");
       const inputNodes = newNodes.filter(n => isInputNode(n.data.type));
@@ -407,12 +606,11 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     }
 
     const pluginConfigNode = newNodes.find(n => n.data.type === "pluginConfig");
-    const selectedId = pluginConfigNode?.id || newNodes[0]?.id;
 
     set({
       nodes: [...get().nodes, ...newNodes],
       edges: [...get().edges, ...newEdges],
-      selectedNode: selectedId,
+      selectedNode: null,
     });
   },
 
@@ -518,5 +716,9 @@ export const useGraphStore = create<GraphState>((set, get) => ({
 
   onConnect: (connection: Connection) => {
     set({ edges: addEdge({ ...connection, id: uuidv4() }, get().edges) });
+  },
+
+  addEdge: (edge: Edge) => {
+    set({ edges: addEdge(edge, get().edges) });
   },
 }));

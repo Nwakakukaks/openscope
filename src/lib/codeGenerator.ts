@@ -13,7 +13,9 @@ const EFFECT_NODES = [
   "chromatic", "vhs", "halftone", "bloom", "cosmicVFX", "vfxPack",
   "pipeline_kaleido-scope", "pipeline_yolo_mask", "pipeline_bloom", "pipeline_cosmic-vfx", "pipeline_vfx-pack",
   "pipeline_customPreprocessor", "pipeline_customPostprocessor",
-  "custom" // User-defined custom effects
+  "custom", // User-defined custom effects
+  // Style nodes
+  "style_chromatic", "style_vhs", "style_bloom", "style_glitch", "style_kaleidoscope", "style_halftone", "style_custom",
 ];
 
 const PIPELINE_EFFECT_IDS = [
@@ -1490,6 +1492,56 @@ function generateSchemaFields(nodes: any[], edges: any[]): string {
     }
   }
 
+  // Extract schema fields from custom processor nodes (AI-generated pipelines)
+  const customProcessorNodes = nodes.filter((n) => 
+    n.data.type === "pipeline_customPreprocessor" || n.data.type === "pipeline_customPostprocessor"
+  );
+  
+  for (const node of customProcessorNodes) {
+    const pythonCode = node.data.config?.pythonCode as string;
+    if (pythonCode && pythonCode.trim()) {
+      // Extract Field definitions from the Config class in the AI-generated code
+      const fieldMatches = pythonCode.match(/(\w+):\s*(\w+)\s*=\s*Field\([^)]+\)/g);
+      if (fieldMatches) {
+        const prefix = node.data.type === "pipeline_customPreprocessor" ? "preprocessor_" : "postprocessor_";
+        for (const fieldDef of fieldMatches) {
+          const fieldMatch = fieldDef.match(/(\w+):\s*(\w+)\s*=\s*Field\(([\s\S]+?)\)/);
+          if (fieldMatch) {
+            const [, fieldName, fieldType, fieldArgs] = fieldMatch;
+            // Extract default value from Field args
+            const defaultMatch = fieldArgs.match(/default\s*=\s*([^,]+)/);
+            const defaultVal = defaultMatch ? defaultMatch[1].trim() : (fieldType === "float" ? "0.5" : fieldType === "int" ? "1" : fieldType === "bool" ? "False" : '""');
+            
+            if (fieldType === "float") {
+              fields.push(`
+    ${prefix}${fieldName}: float = Field(
+        default=${defaultVal},
+        ge=0.0,
+        le=1.0,
+        description="Custom ${fieldName}",
+        json_schema_extra=ui_field_config(order=${order++}, label="${fieldName}"),
+    )`);
+            } else if (fieldType === "int") {
+              fields.push(`
+    ${prefix}${fieldName}: int = Field(
+        default=${defaultVal},
+        description="Custom ${fieldName}",
+        json_schema_extra=ui_field_config(order=${order++}, label="${fieldName}"),
+    )`);
+            } else if (fieldType === "bool") {
+              fields.push(`
+    ${prefix}${fieldName}: bool = Field(
+        default=${defaultVal === "True" || defaultVal === "true" ? "True" : "False"},
+        description="Custom ${fieldName}",
+        json_schema_extra=ui_field_config(order=${order++}, label="${fieldName}"),
+    )`);
+            }
+          }
+        }
+      }
+    }
+  }
+
   return fields.join(",");
 }
 
@@ -1891,6 +1943,24 @@ function generatePipelineInit(nodes: any[], edges: any[]): string {
         video = [frames[i] for i in range(frames.shape[0])]`);
     }
 
+    // Style nodes - use pythonCode from config
+    if (type.startsWith("style_")) {
+      const pythonCode = config.pythonCode as string || "";
+      const effectName = type.replace("style_", "") + "_effect";
+      
+      if (pythonCode) {
+        // Extract the function from the pythonCode
+        const funcMatch = pythonCode.match(/def\s+(\w+)\s*\(/);
+        const actualName = funcMatch ? funcMatch[1] : effectName;
+        
+        lines.push(`    # Style effect: ${actualName}
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    frames = ${actualName}(frames, **kwargs)
+    video = [frames[i] for i in range(frames.shape[0])]`);
+      }
+    }
+
     // Custom effect - user's own code
     if (type === "custom") {
       const customCode = (config.code as string) || "# Custom effect code\nreturn frames";
@@ -1902,6 +1972,27 @@ function generatePipelineInit(nodes: any[], edges: any[]): string {
     # User-defined processing
 ${customCode.split('\n').map(line => '    ' + line).join('\n')}
     video = [frames[i] for i in range(frames.shape[0])]`);
+    }
+
+    // Custom preprocessor/postprocessor - AI-generated pipeline code
+    if (type === "pipeline_customPreprocessor" || type === "pipeline_customPostprocessor") {
+      const pythonCode = config.pythonCode as string || "";
+      
+      if (pythonCode) {
+        // Extract function definitions from the generated pipeline code
+        const funcMatches = pythonCode.match(/def\s+(\w+)\s*\(/g) || [];
+        
+        // Find the main processing function (usually the Pipeline's __call__ logic)
+        // For now, we'll call a helper that wraps the effect
+        const nodeName = type.replace("pipeline_custom", "").toLowerCase();
+        
+        lines.push(`    # Custom ${nodeName} processor
+    frames = torch.stack([f.squeeze(0) for f in video], dim=0)
+    frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+    # Apply custom ${nodeName} effect from AI-generated code
+    frames = _apply_custom_${nodeName}(frames, **kwargs)
+    video = [frames[i] for i in range(frames.shape[0])]`);
+      }
     }
   }
 
@@ -1996,6 +2087,77 @@ export function generatePlugin(nodes: any[], edges: any[]): string {
   if (needsVfxPack) {
     helpers.push(VFX_PACK_HELPER);
   }
+
+  // Collect pythonCode from Style nodes that are connected to any pipeline/processor
+  // Style nodes connected via the "styles" handle to processors
+  const styleNodeIds = new Set(
+    edges
+      .filter(e => e.targetHandle === "styles")
+      .map(e => e.source)
+  );
+  
+  const styleNodes = nodes.filter((n) => 
+    n.data.type?.startsWith("style_") && styleNodeIds.has(n.id)
+  );
+  
+  // Fallback: if no styles connected via handles, include all style nodes (legacy behavior)
+  const allStyleNodes = styleNodeIds.size === 0 
+    ? nodes.filter((n) => n.data.type?.startsWith("style_"))
+    : styleNodes;
+    
+  const styleHelpers: string[] = [];
+  const addedFunctions = new Set<string>();
+  
+  for (const node of allStyleNodes) {
+    const pythonCode = node.data.config?.pythonCode as string;
+    if (pythonCode && pythonCode.trim()) {
+      // Extract function name from the code
+      const funcMatch = pythonCode.match(/def\s+(\w+)\s*\(/);
+      if (funcMatch) {
+        const funcName = funcMatch[1];
+        if (!addedFunctions.has(funcName)) {
+          styleHelpers.push(pythonCode);
+          addedFunctions.add(funcName);
+        }
+      }
+    }
+  }
+
+  // Collect pythonCode from custom processor nodes (pipeline_customPreprocessor, pipeline_customPostprocessor)
+  const customProcessorNodes = nodes.filter((n) => 
+    n.data.type === "pipeline_customPreprocessor" || n.data.type === "pipeline_customPostprocessor"
+  );
+  
+  for (const node of customProcessorNodes) {
+    const pythonCode = node.data.config?.pythonCode as string;
+    if (pythonCode && pythonCode.trim()) {
+      // Extract the __call__ method logic from the Pipeline class
+      // This is a simplified extraction - gets the body between def __call__ and the next def/class
+      const callMatch = pythonCode.match(/def __call__\(self[^)]*\)[^:]*:\s*"""[\s\S]*?"""\s*([\s\S]*?)(?=\n    def |\nclass |\n\ndef |$)/);
+      if (callMatch) {
+        const callBody = callMatch[1].trim();
+        // Create a helper function from the extracted code
+        const nodeName = node.data.type.replace("pipeline_custom", "").toLowerCase();
+        const helperCode = `def _apply_custom_${nodeName}(frames, **kwargs):
+    """AI-generated custom ${nodeName} effect."""
+    import torch
+    # Convert frames if needed
+    if frames.max() > 1.0:
+        frames = frames / 255.0
+    # Extract parameters from kwargs
+${callBody.split('\n').map(line => '    ' + line).join('\n')}
+    return frames.clamp(0, 1)`;
+        
+        if (!addedFunctions.has(`_apply_custom_${nodeName}`)) {
+          styleHelpers.push(helperCode);
+          addedFunctions.add(`_apply_custom_${nodeName}`);
+        }
+      }
+    }
+  }
+
+  // Add style helpers to the helpers array
+  helpers.push(...styleHelpers);
 
   return `"""${pluginId} - Generated by OpenScope"""
 

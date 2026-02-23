@@ -16,6 +16,7 @@ import {
   CircleUser,
   Wifi,
   WifiOff,
+  Trash2,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import { generatePluginFiles } from "@/lib/codeGenerator";
@@ -35,6 +36,9 @@ interface HeaderProps {
   isStreaming?: boolean;
   onStartStream?: () => void;
   onStopStream?: () => void;
+  showRunPrompt?: boolean;
+  onRunClick?: () => void;
+  onClearClick?: () => void;
 }
 
 export default function Header({ 
@@ -50,10 +54,14 @@ export default function Header({
   isStreaming,
   onStartStream,
   onStopStream,
+  showRunPrompt,
+  onRunClick,
+  onClearClick,
 }: HeaderProps) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const nodes = useGraphStore((state) => state.nodes);
   const edges = useGraphStore((state) => state.edges);
+  const clearAll = useGraphStore((state) => state.clearAll);
 
   const handleExport = async () => {
     // Check if there are any nodes in the canvas
@@ -143,6 +151,16 @@ export default function Header({
           <ActionButton icon={FolderPlus} label="Templates" onClick={onOpenTemplates} data-tour="header-templates" />
           {/* <ActionButton icon={FolderOpen} label="Open" onClick={onOpenOpen} /> */}
           <ActionButton icon={Save} label="Save" onClick={() => showInfo("Coming soon", "Save functionality will be available in a future update")} />
+          <ActionButton icon={Trash2} label="Clear" onClick={() => {
+            if (nodes.length > 0) {
+              clearAll();
+              if (isStreaming && onStopStream) {
+                onStopStream();
+              }
+              if (onClearClick) onClearClick();
+              showSuccess("Canvas cleared", "All nodes have been removed from the canvas");
+            }
+          }} data-tour="header-clear" />
         </nav>
       </div>
       <div className="flex items-center gap-3">
@@ -169,9 +187,12 @@ export default function Header({
           </button>
         ) : (
           <button
-            onClick={onStartStream}
+            onClick={() => {
+              if (onRunClick) onRunClick();
+              if (onStartStream) onStartStream();
+            }}
             data-tour="header-run"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg  bg-accent text-accent-foreground hover:bg-muted transition-colors text-sm font-medium"
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-accent-foreground hover:bg-muted transition-colors text-sm font-medium ${showRunPrompt ? "animate-pulse-ring" : ""}`}
           >
             <Play className="w-4 h-4" />
             Run

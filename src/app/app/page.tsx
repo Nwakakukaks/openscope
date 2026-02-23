@@ -15,7 +15,7 @@ import { useGraphStore } from "@/store/graphStore";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { useScopeServer } from "@/hooks/useScopeServer";
 import { supabase } from "@/lib/supabase";
-import { showError, showWarning } from "@/lib/toast";
+import { showError, showWarning, showSuccess } from "@/lib/toast";
 
 export default function Home() {
   const [showTemplates, setShowTemplates] = useState(false);
@@ -26,18 +26,33 @@ export default function Home() {
   const [showTour, setShowTour] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [tourPropertiesPanel, setTourPropertiesPanel] = useState(false);
+  const [hasClickedRun, setHasClickedRun] = useState(false);
+
+  const hasSeenRunPrompt = typeof window !== "undefined" && localStorage.getItem("openscope_run_prompt") === "true";
 
   useEffect(() => {
     const hasTour = hasSeenTour();
     if (!hasTour) {
       setShowTour(true);
+    } else {
+      loadDefaultWorkflow();
+      if (!hasSeenRunPrompt) {
+        showSuccess("Ready to build!", "Click Run to preview or Clear to start fresh");
+      }
     }
   }, []);
+
+  useEffect(() => {
+    if (hasClickedRun && typeof window !== "undefined") {
+      localStorage.setItem("openscope_run_prompt", "true");
+    }
+  }, [hasClickedRun]);
 
   const selectedNode = useGraphStore((state) => state.selectedNode);
   const nodes = useGraphStore((state) => state.nodes);
   const edges = useGraphStore((state) => state.edges);
   const addOutputNode = useGraphStore((state) => state.addOutputNode);
+  const loadDefaultWorkflow = useGraphStore((state) => state.loadDefaultWorkflow);
 
   const { saveWorkflow, loading: saveLoading } = useWorkflows();
   const {
@@ -310,18 +325,37 @@ export default function Home() {
         return;
       }
 
-      // Check if video input has uploaded content
-      if (!localStream) {
+      // Check if video input has uploaded content or webcam
+      const hasVideoInput = localStream || (videoInputNode?.data?.config?.videoPreviewUrl as string);
+
+      if (!hasVideoInput) {
         showWarning("No video input", "Please upload a video in the Video Input node first");
         setIsLoading(false);
         return;
+      }
+
+      // Create stream from preloaded video URL if no localStream
+      let streamToUse = localStream;
+      if (!streamToUse && videoInputNode?.data?.config?.videoPreviewUrl) {
+        try {
+          const videoUrl = videoInputNode.data.config.videoPreviewUrl as string;
+          const video = document.createElement("video");
+          video.src = videoUrl;
+          video.muted = true;
+          video.playsInline = true;
+          video.crossOrigin = "anonymous";
+          await video.play();
+          streamToUse = (video as HTMLVideoElement & { captureStream: (frameRate?: number) => MediaStream }).captureStream(30);
+        } catch (err) {
+          console.error("Failed to create stream from video URL:", err);
+        }
       }
 
       // Start WebRTC - localStream will be sent if user uploaded video in Preview panel
       await startWebRTC((stream) => {
         setRemoteStream(stream);
         setIsStreaming(true);
-      }, initialParameters, localStream);
+      }, initialParameters, streamToUse);
 
     } catch (err) {
       console.error("Failed to start stream:", err);
@@ -352,6 +386,9 @@ export default function Home() {
         isStreaming={isStreaming}
         onStartStream={handleStartStream}
         onStopStream={handleStopStream}
+        showRunPrompt={!hasSeenRunPrompt}
+        onRunClick={() => setHasClickedRun(true)}
+        onClearClick={() => setHasClickedRun(true)}
       />
       <div className="flex-1 flex min-h-0 w-full relative">
         {sidebarOpen && <NodePalette />}
@@ -398,8 +435,14 @@ export default function Home() {
 
       <TourModal
         isOpen={showTour}
-        onClose={() => setShowTour(false)}
-        onComplete={() => setShowTour(false)}
+        onClose={() => {
+          setShowTour(false);
+          loadDefaultWorkflow();
+        }}
+        onComplete={() => {
+          setShowTour(false);
+          loadDefaultWorkflow();
+        }}
         onStepChange={(step) => setTourPropertiesPanel(step !== null)}
       />
     </div>

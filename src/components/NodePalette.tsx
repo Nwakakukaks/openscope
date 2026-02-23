@@ -15,6 +15,8 @@ import {
   Zap,
   AlertCircle,
   BrainCog,
+  Sparkles,
+  Wand2,
 } from "lucide-react";
 import { useGraphStore } from "@/store/graphStore";
 import { showError } from "@/lib/toast";
@@ -85,6 +87,7 @@ export default function NodePalette() {
       case "Guides":
       case "Pre-processor":
       case "Post-processor":
+      case "Styles":
         return true;
       case "Effects":
         return usage === "postprocessor" || usage === "all";
@@ -196,11 +199,23 @@ export default function NodePalette() {
     ];
   };
 
+  const getStyleNodes = () => {
+    return [
+      { type: "style_chromatic", label: "Chromatic Aberration", icon: <Wand2 className="w-4 h-4" />, description: "RGB channel displacement effect", enabled: true },
+      { type: "style_vhs", label: "VHS / Retro", icon: <Wand2 className="w-4 h-4" />, description: "Retro CRT/VHS scanline effect", enabled: true },
+      { type: "style_bloom", label: "Bloom", icon: <Wand2 className="w-4 h-4" />, description: "Soft glow around bright areas", enabled: true },
+      { type: "style_glitch", label: "Glitch", icon: <Wand2 className="w-4 h-4" />, description: "Digital corruption/artifact effect", enabled: true },
+      { type: "style_kaleidoscope", label: "Kaleidoscope", icon: <Wand2 className="w-4 h-4" />, description: "Mirror symmetry with rotational patterns", enabled: true },
+      { type: "style_halftone", label: "Halftone", icon: <Wand2 className="w-4 h-4" />, description: "Newspaper dot pattern effect", enabled: true },
+      { type: "style_custom", label: "Create Custom", icon: <Sparkles className="w-4 h-4" />, description: "Create a custom effect from scratch", enabled: true },
+    ];
+  };
+
   const getPreprocessorNodes = () => {
     const preprocessorPipelines = Object.values(pipelines).filter(isPreprocessor);
 
     return [
-      { type: "pipeline_customPreprocessor", label: "Create New (Beta)", icon: <BrainCog className="w-4 h-4" />, description: "Build new processor with AI", enabled: true, createNewKind: "preprocessor" as const },
+      { type: "pipeline_customPreprocessor", label: "Create New", icon: <BrainCog className="w-4 h-4" />, description: "Pre-Processor", enabled: true, createNewKind: "preprocessor" as const },
       ...preprocessorPipelines.map(p => ({
         type: `pipeline_${p.id}`,
         label: p.name,
@@ -217,7 +232,7 @@ export default function NodePalette() {
     const postprocessorPipelines = Object.values(pipelines).filter(isPostprocessor);
 
     return [
-      { type: "pipeline_customPostprocessor", label: "Create New (Beta)", icon: <BrainCog className="w-4 h-4" />, description: "Build new processor with AI", enabled: true, createNewKind: "postprocessor" as const },
+      { type: "pipeline_customPostprocessor", label: "Create New", icon: <BrainCog className="w-4 h-4" />, description: "Post-Processor", enabled: true, createNewKind: "postprocessor" as const },
       ...postprocessorPipelines.map(p => ({
         type: `pipeline_${p.id}`,
         label: p.name,
@@ -264,6 +279,12 @@ export default function NodePalette() {
       icon: <Play className="w-4 h-4" />,
       color: "text-slate-400",
       nodes: getPostprocessorNodes(),
+    },
+    {
+      name: "Styles",
+      icon: <Wand2 className="w-4 h-4" />,
+      color: "text-slate-400",
+      nodes: getStyleNodes(),
     },
     // {
     //   name: "Settings",

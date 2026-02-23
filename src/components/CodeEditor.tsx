@@ -19,7 +19,7 @@ export default function CodeEditor({ value, onChange, onClick }: CodeEditorProps
 
   return (
     <div 
-      className="rounded-lg overflow-hidden border border-border bg-[#1d1f21]"
+      className="rounded-lg overflow-hidden border border-border bg-[#1d1f21] max-h-[400px] overflow-y-auto"
       onClick={onClick}
     >
       <Editor
@@ -32,8 +32,7 @@ export default function CodeEditor({ value, onChange, onClick }: CodeEditorProps
           fontFamily: '"Fira Code", "JetBrains Mono", monospace',
           fontSize: 11,
           minHeight: 300,
-          maxHeight: 500,
-          overflow: 'hidden',
+          overflow: 'auto',
         }}
         textareaClassName="focus:outline-none"
       />

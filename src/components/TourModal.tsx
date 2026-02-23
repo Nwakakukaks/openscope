@@ -25,6 +25,12 @@ const TOUR_STEPS: TourStep[] = [
     position: "right",
   },
   {
+    target: "[data-tour='header-clear']",
+    title: "Clear Canvas",
+    description: "Click to remove all nodes from the canvas and start fresh.",
+    position: "right",
+  },
+  {
     target: "[data-tour='node-palette']",
     title: "Node Palette",
     description: "Browse and drag nodes here. Each node represents a component in your video pipeline.",

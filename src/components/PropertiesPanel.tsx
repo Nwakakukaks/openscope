@@ -11,6 +11,7 @@ import {
 import { showError } from "@/lib/toast";
 import { getBackendUrl } from "@/hooks/useScopeServer";
 import { parsePythonConfig, parsedParamsToConfigFields } from "@/lib/pythonConfigParser";
+import { getCodeForNodeType } from "@/lib/codeTemplates";
 
 const SCOPE_API_URL = "/api/scope";
 
@@ -113,6 +114,7 @@ interface PropsPanelProps {
 
 export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStreaming }: PropsPanelProps) {
   const nodes = useGraphStore((state) => state.nodes);
+  const edges = useGraphStore((state) => state.edges);
   const selectedNode = useGraphStore((state) => state.selectedNode);
   const updateNodeConfig = useGraphStore((state) => state.updateNodeConfig);
   const [pipelines, setPipelines] = useState<string[]>([]);
@@ -303,6 +305,61 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
     }
   }
 
+  // Extract parameters from connected Style nodes
+  let styleNodeFields: Array<{
+    label: string;
+    type: string;
+    min?: number;
+    max?: number;
+    options?: string[];
+    description?: string;
+  }> = [];
+  
+  const isCustomProcessor = nodeType === "custom" && 
+    (node.data.config?.createNewKind === "preprocessor" || node.data.config?.createNewKind === "postprocessor");
+  
+  const isServerProcessor = nodeType.startsWith("pipeline_") && 
+    (node.data.config?.usage === "preprocessor" || node.data.config?.usage === "postprocessor");
+  
+  const isProcessorNode = isCustomProcessor || isServerProcessor;
+  
+  if (isProcessorNode) {
+    // Find Style nodes connected to the "styles" handle (purple connector)
+    const styleNodes = edges
+      .filter(e => e.target === node.id && e.targetHandle === "styles")
+      .map(e => nodes.find(n => n.id === e.source))
+      .filter(n => n?.data?.type?.startsWith("style_"));
+    
+    // Extract parameters from each connected style node
+    for (const styleNode of styleNodes) {
+      const styleType = styleNode?.data?.type as string;
+      const styleConfig = styleNode?.data?.config as Record<string, unknown>;
+      const styleLabel = styleType?.replace("style_", "") || "effect";
+      
+      // Common style parameters to extract
+      const styleParams = [
+        { key: "intensity", label: `${styleLabel} Intensity`, type: "slider", min: 0, max: 1, default: 0.5 },
+        { key: "strength", label: `${styleLabel} Strength`, type: "slider", min: 0, max: 1, default: 0.7 },
+        { key: "enabled", label: `${styleLabel} Enabled`, type: "toggle", default: true },
+      ];
+      
+      for (const param of styleParams) {
+        const value = styleConfig?.[param.key] ?? styleConfig?.[param.key.toLowerCase()] ?? param.default;
+        const existingField = styleNodeFields.find(f => f.label === param.label);
+        
+        if (!existingField) {
+          styleNodeFields.push({
+            label: param.label,
+            type: param.type,
+            min: param.min,
+            max: param.max,
+            description: `${param.label} for ${styleType?.replace("style_", "") || "effect"}`,
+          });
+        }
+      }
+    }
+  }
+
   let configFields: Array<{
     label: string;
     type: string;
@@ -318,12 +375,27 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
     configFields = dynamicConfigFields;
   } else if (customProcessorFields.length > 0) {
     configFields = customProcessorFields;
+  } else if (styleNodeFields.length > 0) {
+    configFields = styleNodeFields;
   } else if (nodeConfigs[configKey]) {
     configFields = nodeConfigs[configKey];
   }
 
   const handleConfigChange = (key: string, newValue: unknown) => {
+    const currentConfig = node.data.config || {};
+    const updatedConfig = { ...currentConfig, [key]: newValue };
+    
     updateNodeConfig(node.id, { [key]: newValue });
+
+    const isCodeNode = nodeType === "pluginConfig" || 
+      nodeType.startsWith("pipeline_") || 
+      nodeType.startsWith("pipeline_custom") ||
+      nodeType === "custom";
+    
+    if (isCodeNode) {
+      const newCode = getCodeForNodeType(nodeType, updatedConfig, updatedConfig.createNewKind as string | undefined);
+      updateNodeConfig(node.id, { pythonCode: newCode });
+    }
     
     if (sendParameterUpdate && isStreaming) {
       const paramKey = key.charAt(0).toLowerCase() + key.slice(1);

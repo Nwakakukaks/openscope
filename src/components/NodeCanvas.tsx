@@ -18,6 +18,65 @@ import { Wrench } from "lucide-react";
 import { generateNodeCode } from "@/lib/codeGenerator";
 import { useMemo } from "react";
 
+function getStarterProcessorCode(kind: "preprocessor" | "postprocessor"): string {
+  const typeLabel = kind === "preprocessor" ? "Preprocessor" : "Postprocessor";
+  return `"""Starter ${typeLabel} - Connect Style nodes to add effects."""
+
+from typing import TYPE_CHECKING
+
+import torch
+
+from scope.core.pipelines.interface import Pipeline, Requirements
+
+if TYPE_CHECKING:
+    from scope.core.pipelines.base_schema import BasePipelineConfig
+
+
+class Starter${toPascalCase(kind)}Config:
+    """Starter ${typeLabel} - parameters come from connected Style nodes."""
+    
+    pipeline_id = "starter-${kind}"
+    pipeline_name = "Starter ${typeLabel}"
+    pipeline_description = "Connect Style nodes to this processor to add effects"
+    
+    # Parameters will be auto-generated from connected Style nodes
+    pass
+
+
+class Starter${toPascalCase(kind)}Pipeline(Pipeline):
+    """Starter ${typeLabel} processor - pass-through with Style effects."""
+    
+    def get_config_class(cls):
+        return Starter${toPascalCase(kind)}Config
+
+    def __init__(self, device=None, **kwargs):
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def prepare(self, **kwargs):
+        return Requirements(input_size=1)
+
+    def __call__(self, **kwargs):
+        video = kwargs.get("video")
+        if video is None:
+            raise ValueError("Video required")
+        
+        frames = torch.stack([frame.squeeze(0) for frame in video], dim=0)
+        frames = frames.to(device=self.device, dtype=torch.float32) / 255.0
+        
+        # Style effects will be applied here - parameters come from kwargs
+        result = frames
+        
+        return {"video": result.clamp(0, 1).cpu()}
+
+
+def register_pipelines(register):
+    register(Starter${toPascalCase(kind)}Pipeline)`;
+}
+
+function toPascalCase(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1).replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+}
+
 const nodeTypes = {
   scopeNode: ScopeNode as any,
 };
@@ -37,9 +96,34 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
   const edges = useGraphStore((state) => state.edges);
   const onNodesChange = useGraphStore((state) => state.onNodesChange);
   const onEdgesChange = useGraphStore((state) => state.onEdgesChange);
-  const onConnect = useGraphStore((state) => state.onConnect);
+  const addEdge = useGraphStore((state) => state.addEdge);
   const addNode = useGraphStore((state) => state.addNode);
   const selectNode = useGraphStore((state) => state.selectNode);
+
+  // Custom onConnect that styles edges based on connection type
+  const handleConnect = useCallback((connection: any) => {
+    const sourceNode = nodes.find(n => n.id === connection.source);
+    const targetNode = nodes.find(n => n.id === connection.target);
+    const isStyleConnection = 
+      (sourceNode?.data?.type?.startsWith("style_")) ||
+      (targetNode?.data?.type?.startsWith("style_")) ||
+      connection.sourceHandle === "styles" ||
+      connection.targetHandle === "styles";
+    
+    const edgeStyle = isStyleConnection 
+      ? { stroke: "#a855f7", strokeWidth: 2, animated: true }
+      : { stroke: "hsl(var(--primary))", strokeWidth: 2, animated: true };
+    
+    const newEdge = {
+      ...connection,
+      id: `e-${connection.source}-${connection.target}-${Date.now()}`,
+      type: "smoothstep",
+      animated: true,
+      style: edgeStyle,
+    };
+    
+    addEdge(newEdge);
+  }, [nodes, addEdge]);
 
   // Inject stream references into node data for video preview
   const nodesWithStreams = useMemo(() => {
@@ -93,19 +177,22 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
       };
 
       // Handle Create New (Beta) from pre/post processor categories
+      // These create a starter processor that users connect Style nodes to
       if (nodeType === "pipeline_customPreprocessor") {
         addNode("custom", position, { 
           createNewKind: "preprocessor",
-          pythonCode: generateNodeCode("custom", { createNewKind: "preprocessor" }),
-          isCodeMode: true,
+          label: "Preprocessor",
+          pythonCode: getStarterProcessorCode("preprocessor"),
+          isCodeMode: false,
         });
         return;
       }
       if (nodeType === "pipeline_customPostprocessor") {
         addNode("custom", position, { 
           createNewKind: "postprocessor",
-          pythonCode: generateNodeCode("custom", { createNewKind: "postprocessor" }),
-          isCodeMode: true,
+          label: "Postprocessor",
+          pythonCode: getStarterProcessorCode("postprocessor"),
+          isCodeMode: false,
         });
         return;
       }
@@ -114,10 +201,11 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
         addNode(nodeType, position, { createNewKind });
       } else if (createNewKind === "preprocessor" || createNewKind === "postprocessor") {
         // Add the custom node - the in-canvas chat will appear when selected
+        // Start with NO code - user generates via AI chat
         addNode("custom", position, { 
           createNewKind,
-          pythonCode: generateNodeCode("custom", { createNewKind }),
-          isCodeMode: true,
+          pythonCode: "",
+          isCodeMode: false,
         });
       } else if (pipelineId) {
         // Pass pipelineId and usage from drag data to addNode
@@ -137,7 +225,7 @@ export default function NodeCanvas({ localStream, remoteStream, isStreaming, sen
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
+          onConnect={handleConnect}
           onSelectionChange={({ nodes: selectedNodes }) => {
             const selected = selectedNodes.find(n => n.selected);
             if (selected) {
