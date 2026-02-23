@@ -117,16 +117,6 @@ Click "Export" to generate Python code that can be installed as a Scope plugin:
 uv run daydream-scope install -e /path/to/your-plugin
 ```
 
-## Deployment
-
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for deploying OpenScope and Scope to production.
-
-### Quick Deploy
-
-1. **Scope** → Deploy to Render (or RunPod for GPU)
-2. **OpenScope Backend** → Deploy to Render
-3. **OpenScope Frontend** → Deploy to Vercel
-
 ## Tech Stack
 
 - **Frontend**: Next.js 14, React Flow, TypeScript, Tailwind CSS
