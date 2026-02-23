@@ -36,9 +36,8 @@ export default function Home() {
       setShowTour(true);
     } else {
       loadDefaultWorkflow();
-      if (!hasSeenRunPrompt) {
-        showSuccess("Ready to build!", "Click Run to preview or Clear to start fresh");
-      }
+      showSuccess("Ready to build!", "Click Run to preview or Clear to start from a fresh canvas");
+
     }
   }, []);
 
@@ -301,9 +300,9 @@ export default function Home() {
 
 
       // Validate: must have input node in canvas
-      const hasInput = nodes.some(n => 
-        n.data.type === "videoInput" || 
-        n.data.type === "imageInput" || 
+      const hasInput = nodes.some(n =>
+        n.data.type === "videoInput" ||
+        n.data.type === "imageInput" ||
         n.data.type === "textPrompt"
       );
 
@@ -314,8 +313,8 @@ export default function Home() {
       }
 
       // Validate: must have output node in canvas
-      const hasOutput = nodes.some(n => 
-        n.data.type === "pipelineOutput" || 
+      const hasOutput = nodes.some(n =>
+        n.data.type === "pipelineOutput" ||
         n.data.type?.startsWith("pipeline_")
       );
 

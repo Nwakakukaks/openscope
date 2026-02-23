@@ -250,7 +250,7 @@ export function getDefaultWorkflow(): {
         position: { x: 200, y: 280 },
         config: {
           title: "Welcome to OpenScope! 🎉",
-          content: `OpenScope lets you build video AI pipelines visually.
+          content: `OpenScope lets you build realtime video pipelines visually.
 
 What's happening now 🚩:
 - Video Input → Main Pipeline → Pre-processor → Output
