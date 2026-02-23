@@ -40,7 +40,7 @@ export default function Home() {
       setShowTour(true);
     } else {
       loadDefaultWorkflow();
-      showSuccess("Ready to build!", "Click Run to preview or Clear to start from a fresh canvas");
+      showSuccess("Ready to build!", "Click Run to preview or Clear to start fresh");
     }
   }, []);
 
