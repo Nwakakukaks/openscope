@@ -60,6 +60,17 @@ const NODE_GUIDES: Record<string, string> = {
 const STYLE_NODE_GUIDE = "Style effect node. Connect the purple output to a processor's purple input to add effects.";
 const PROCESSOR_NODE_GUIDE = "Starter processor. Connect video input on left (blue), Style nodes on purple connector to add effects.";
 
+interface EffectSchemaField {
+  type: "slider" | "select" | "text" | "toggle";
+  label?: string;
+  default: number | string | boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: string[];
+  description?: string;
+}
+
 function ScopeNode({ id, data, selected }: NodeProps) {
   const nodeData = data as unknown as {
     label: string;
@@ -69,6 +80,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
     remoteStream?: MediaStream | null;
     isStreaming?: boolean;
     sendParameterUpdate?: (params: Record<string, unknown>) => void;
+    effectSchema?: Record<string, EffectSchemaField>;
   };
   const selectNode = useGraphStore((state) => state.selectNode);
   const deleteNode = useGraphStore((state) => state.deleteNode);
@@ -147,7 +159,7 @@ function ScopeNode({ id, data, selected }: NodeProps) {
       return nodeData.config?.pipelineId as string || "";
     }
     if (nodeData.type.startsWith("style_")) {
-      return nodeData.type.replace("style_", "").replace("_", " ") || "Style";
+      return (nodeData.config?.effectName as string) || nodeData.type.replace("style_", "").replace("_", " ") || "Style";
     }
     if (nodeData.type === "parameters") {
       const keys = Object.keys(nodeData.config || {}).filter(k => !["pipelineId", "pipelineName"].includes(k));
@@ -308,16 +320,25 @@ function ScopeNode({ id, data, selected }: NodeProps) {
           pythonCode: data.code,
           code: data.code,
           isCodeMode: true,
+          effectSchema: data.schema || {},
         });
 
-        showSuccess("Code added to node. Switch to code mode to view.");
+        showSuccess(data.schema && Object.keys(data.schema).length > 0 
+          ? "Controls added! Use visual mode to adjust parameters." 
+          : "Code added to node. Switch to code mode to view.");
 
         setChatMessages(prev => [...prev, {
           role: "assistant",
-          content: `Code added to node. Switch to code mode to view.`,
+          content: data.schema && Object.keys(data.schema).length > 0
+            ? `Effect created with ${Object.keys(data.schema).length} control(s)! Switch to visual mode to adjust.`
+            : `Code added to node. Switch to code mode to view.`,
         }]);
 
-        setNodeMode("code");
+        if (data.schema && Object.keys(data.schema).length > 0) {
+          setNodeMode("visual");
+        } else {
+          setNodeMode("code");
+        }
       } else {
         showError("Generation failed", data.detail || "Failed to generate processor");
         setChatMessages(prev => [...prev, {
@@ -682,6 +703,84 @@ function ScopeNode({ id, data, selected }: NodeProps) {
               )}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Visual mode: Schema controls for style nodes with effect parameters */}
+      {nodeMode === "visual" && isStyleNode && nodeData.config?.effectSchema && Object.keys(nodeData.config.effectSchema as Record<string, EffectSchemaField>).length > 0 && (
+        <div className="px-3 pb-3 mt-2 border-t border-border/40 space-y-3">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Effect Name</label>
+            <input
+              type="text"
+              value={(nodeData.config?.effectName as string) || ""}
+              onChange={(e) => updateNodeConfig(id, { effectName: e.target.value })}
+              placeholder="e.g., Glow, Bloom, etc."
+              className="w-full px-2 py-1 bg-muted rounded text-xs text-foreground placeholder:text-muted-foreground"
+            />
+          </div>
+          <div className="text-xs text-muted-foreground font-medium">Parameters</div>
+          {Object.entries(nodeData.config.effectSchema as Record<string, EffectSchemaField>).map(([key, field]) => (
+            <div key={key} className="space-y-1">
+              {field.type === "slider" && (
+                <>
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>{field.label || key}</span>
+                    <span>{String((nodeData.config as Record<string, unknown>)[key] ?? field.default)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={field.min ?? 0}
+                    max={field.max ?? 1}
+                    step={field.step ?? 0.01}
+                    value={(nodeData.config as Record<string, unknown>)[key] as number ?? field.default as number}
+                    onChange={(e) => {
+                      const newValue = parseFloat(e.target.value);
+                      updateNodeConfig(id, { [key]: newValue });
+                      if (nodeData.sendParameterUpdate) {
+                        nodeData.sendParameterUpdate({ [key]: newValue });
+                      }
+                    }}
+                    className="w-full h-2 bg-muted rounded-lg appearance-none cursor-pointer accent-primary"
+                  />
+                </>
+              )}
+              {field.type === "toggle" && (
+                <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={(nodeData.config as Record<string, unknown>)[key] as boolean ?? field.default as boolean}
+                    onChange={(e) => {
+                      const newValue = e.target.checked;
+                      updateNodeConfig(id, { [key]: newValue });
+                      if (nodeData.sendParameterUpdate) {
+                        nodeData.sendParameterUpdate({ [key]: newValue });
+                      }
+                    }}
+                    className="w-4 h-4 rounded accent-primary"
+                  />
+                  <span>{field.label || key}</span>
+                </label>
+              )}
+              {field.type === "text" && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs text-muted-foreground">{field.label || key}</label>
+                  <input
+                    type="text"
+                    value={(nodeData.config as Record<string, unknown>)[key] as string ?? field.default as string}
+                    onChange={(e) => {
+                      const newValue = e.target.value;
+                      updateNodeConfig(id, { [key]: newValue });
+                      if (nodeData.sendParameterUpdate) {
+                        nodeData.sendParameterUpdate({ [key]: newValue });
+                      }
+                    }}
+                    className="w-full px-2 py-1 bg-muted rounded text-xs text-foreground"
+                  />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

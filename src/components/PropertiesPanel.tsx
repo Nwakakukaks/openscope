@@ -306,14 +306,17 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
   }
 
   // Extract parameters from connected Style nodes
-  let styleNodeFields: Array<{
+  type StyleNodeField = {
     label: string;
     type: string;
     min?: number;
     max?: number;
     options?: string[];
     description?: string;
-  }> = [];
+    sourceNodeId?: string;
+    paramKey?: string;
+  };
+  let styleNodeFields: StyleNodeField[] = [];
   
   const isCustomProcessor = nodeType === "custom" && 
     (node.data.config?.createNewKind === "preprocessor" || node.data.config?.createNewKind === "postprocessor");
@@ -332,9 +335,12 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
     
     // Extract parameters from each connected style node
     for (const styleNode of styleNodes) {
-      const styleType = styleNode?.data?.type as string;
-      const styleConfig = styleNode?.data?.config as Record<string, unknown>;
-      const styleLabel = styleType?.replace("style_", "") || "effect";
+      if (!styleNode) continue;
+      const styleId = styleNode.id;
+      const styleType = styleNode.data.type as string;
+      const styleConfig = styleNode.data.config as Record<string, unknown>;
+      const effectName = (styleConfig?.effectName as string) || styleType?.replace("style_", "") || "effect";
+      const styleLabel = effectName;
       
       // Common style parameters to extract
       const styleParams = [
@@ -344,18 +350,15 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
       ];
       
       for (const param of styleParams) {
-        const value = styleConfig?.[param.key] ?? styleConfig?.[param.key.toLowerCase()] ?? param.default;
-        const existingField = styleNodeFields.find(f => f.label === param.label);
-        
-        if (!existingField) {
-          styleNodeFields.push({
-            label: param.label,
-            type: param.type,
-            min: param.min,
-            max: param.max,
-            description: `${param.label} for ${styleType?.replace("style_", "") || "effect"}`,
-          });
-        }
+        styleNodeFields.push({
+          label: param.label,
+          type: param.type,
+          min: param.min,
+          max: param.max,
+          description: `${param.label} for ${styleLabel}`,
+          sourceNodeId: styleId,
+          paramKey: param.key,
+        });
       }
     }
   }
@@ -369,6 +372,8 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
     description?: string;
     readonly?: boolean;
     accept?: string;
+    sourceNodeId?: string;
+    paramKey?: string;
   }> = [];
 
   if (dynamicConfigFields.length > 0) {
@@ -381,7 +386,21 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
     configFields = nodeConfigs[configKey];
   }
 
-  const handleConfigChange = (key: string, newValue: unknown) => {
+  const handleConfigChange = (key: string, newValue: unknown, sourceNodeId?: string, paramKey?: string) => {
+    // Handle style node field updates - write to the source style node
+    if (sourceNodeId && paramKey) {
+      updateNodeConfig(sourceNodeId, { [paramKey]: newValue });
+      
+      // Send to stream for real-time updates
+      if (sendParameterUpdate && isStreaming) {
+        const sourceNode = nodes.find(n => n.id === sourceNodeId);
+        const effectName = (sourceNode?.data?.config?.effectName as string) || "effect";
+        const paramName = `${effectName}_${paramKey}`;
+        sendParameterUpdate({ [paramName]: newValue });
+      }
+      return;
+    }
+
     const currentConfig = node.data.config || {};
     const updatedConfig = { ...currentConfig, [key]: newValue };
     
@@ -457,10 +476,18 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
             ) : (
               <div className="space-y-4">
                 {configFields.map((field) => {
-                  const value = node.data.config[field.label] ??
-                    node.data.config[field.label.toLowerCase()] ??
-                    (field.type === "slider" || field.type === "number" ? 0 :
-                      field.type === "toggle" ? false : "");
+                  // For style node fields, read from the source style node's config
+                  let value: unknown;
+                  if (field.sourceNodeId && field.paramKey) {
+                    const sourceNode = nodes.find(n => n.id === field.sourceNodeId);
+                    const sourceConfig = sourceNode?.data?.config as Record<string, unknown> | undefined;
+                    value = sourceConfig?.[field.paramKey] ?? (field.type === "slider" || field.type === "number" ? 0.5 : field.type === "toggle" ? true : "");
+                  } else {
+                    value = node.data.config[field.label] ??
+                      node.data.config[field.label.toLowerCase()] ??
+                      (field.type === "slider" || field.type === "number" ? 0 :
+                        field.type === "toggle" ? false : "");
+                  }
 
                   return (
                     <div key={field.label} className="space-y-2">
@@ -474,7 +501,7 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
                           value={String(value)}
                           readOnly={field.readonly}
                           onChange={(e) =>
-                            !field.readonly && handleConfigChange(field.label, e.target.value)
+                            !field.readonly && handleConfigChange(field.label, e.target.value, field.sourceNodeId, field.paramKey)
                           }
                         />
                       )}
@@ -485,7 +512,7 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
                           rows={field.label === "Content" ? 22 : 3}
                           value={String(value)}
                           onChange={(e) =>
-                            handleConfigChange(field.label, e.target.value)
+                            handleConfigChange(field.label, e.target.value, field.sourceNodeId, field.paramKey)
                           }
                         />
                       )}
@@ -498,7 +525,7 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
                           max={field.max}
                           value={Number(value)}
                           onChange={(e) =>
-                            handleConfigChange(field.label, parseFloat(e.target.value))
+                            handleConfigChange(field.label, parseFloat(e.target.value), field.sourceNodeId, field.paramKey)
                           }
                         />
                       )}
@@ -518,7 +545,7 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
                             step={0.1}
                             value={Number(value)}
                             onChange={(e) =>
-                              handleConfigChange(field.label, parseFloat(e.target.value))
+                              handleConfigChange(field.label, parseFloat(e.target.value), field.sourceNodeId, field.paramKey)
                             }
                           />
                         </div>
@@ -529,7 +556,7 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
                           className="w-full px-3 py-2 bg-background border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer"
                           value={String(value)}
                           onChange={(e) =>
-                            handleConfigChange(field.label, e.target.value)
+                            handleConfigChange(field.label, e.target.value, field.sourceNodeId, field.paramKey)
                           }
                         >
                           {pipelinesLoading ? (
@@ -551,7 +578,7 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
                           onChange={(e) =>
                             nodeType === "pluginConfig"
                               ? handlePluginConfigChange(field.label, e.target.value)
-                              : handleConfigChange(field.label, e.target.value)
+                              : handleConfigChange(field.label, e.target.value, field.sourceNodeId, field.paramKey)
                           }
                         >
                           {(field.label === "pipelineId" && (nodeType === "pluginConfig" || nodeType === "pipeline" || isPipelineNode)) ? (
@@ -579,7 +606,7 @@ export default function PropertiesPanel({ forceShow, sendParameterUpdate, isStre
                           type="button"
                           disabled={field.readonly}
                           onClick={() =>
-                            !field.readonly && handleConfigChange(field.label, !value)
+                            !field.readonly && handleConfigChange(field.label, !value, field.sourceNodeId, field.paramKey)
                           }
                           className={`w-8 h-4 rounded-full transition-colors ${value ? "bg-primary" : "bg-background border border-border"} ${field.readonly ? "opacity-50 cursor-not-allowed" : ""}`}
                         >
